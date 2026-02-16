@@ -55,6 +55,9 @@ impl ReactEngine {
 #[async_trait]
 impl Engine for ReactEngine {
     async fn run(&mut self, task: &str) -> Result<String> {
+        // Each task starts with a clean slate
+        self.memory.clear().await?;
+
         self.memory
             .store(MemoryEntry::Task {
                 content: task.to_string(),

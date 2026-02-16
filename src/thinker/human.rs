@@ -24,8 +24,11 @@ impl HumanThinker {
 
         if !context.history.is_empty() {
             println!("History:");
-            for entry in &context.history {
-                println!("  {:?}", entry);
+            for (i, entry) in context.history.iter().enumerate() {
+                if i > 0 {
+                    println!();
+                }
+                println!("  {}", entry);
             }
             println!("{}", "-".repeat(60));
         }
