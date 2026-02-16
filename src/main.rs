@@ -35,7 +35,7 @@ struct Cli {
     model: Option<String>,
 
     /// SQLite database path for memory persistence (use :memory: for ephemeral)
-    #[arg(short, long, default_value = ":memory:")]
+    #[arg(short, long, default_value = "golem.db")]
     db: String,
 
     /// Maximum ReAct loop iterations before giving up
