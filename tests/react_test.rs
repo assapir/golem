@@ -143,3 +143,29 @@ async fn swap_thinker_at_runtime() {
     let result = engine.run("task 2").await.unwrap();
     assert_eq!(result, "answer from brain 2");
 }
+
+#[tokio::test]
+async fn memory_cleared_between_runs() {
+    let steps: Vec<Step> = vec![
+        // First run
+        Step::Finish {
+            thought: "done with first".to_string(),
+            answer: "first answer".to_string(),
+        },
+        // Second run - the mock thinker receives context, but we just finish
+        Step::Finish {
+            thought: "done with second".to_string(),
+            answer: "second answer".to_string(),
+        },
+    ];
+
+    let mut engine = build_engine(steps).await;
+
+    engine.run("first task").await.unwrap();
+    engine.run("second task").await.unwrap();
+
+    // Memory should only contain entries from the second run
+    let history = engine.history().await.unwrap();
+    assert_eq!(history.len(), 2); // Task + Answer
+    assert!(matches!(&history[0], golem::memory::MemoryEntry::Task { content } if content == "second task"));
+}

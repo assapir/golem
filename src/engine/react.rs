@@ -50,6 +50,11 @@ impl ReactEngine {
     pub async fn set_thinker(&self, thinker: Box<dyn Thinker>) {
         *self.thinker.write().await = thinker;
     }
+
+    /// Access memory history (useful for tests and inspection).
+    pub async fn history(&self) -> Result<Vec<MemoryEntry>> {
+        self.memory.history().await
+    }
 }
 
 #[async_trait]

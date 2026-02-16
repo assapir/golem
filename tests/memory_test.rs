@@ -1,5 +1,6 @@
 use golem::memory::sqlite::SqliteMemory;
 use golem::memory::{Memory, MemoryEntry};
+use golem::tools::{Outcome, ToolResult};
 
 #[tokio::test]
 async fn store_and_retrieve_history() {
@@ -73,4 +74,60 @@ async fn clear_removes_all_entries() {
 
     let history = mem.history().await.unwrap();
     assert!(history.is_empty());
+}
+
+#[test]
+fn display_task() {
+    let entry = MemoryEntry::Task {
+        content: "do something".to_string(),
+    };
+    assert_eq!(format!("{}", entry), "Task: do something");
+}
+
+#[test]
+fn display_answer() {
+    let entry = MemoryEntry::Answer {
+        thought: "figured it out".to_string(),
+        content: "42".to_string(),
+    };
+    assert_eq!(format!("{}", entry), "Answer (figured it out): 42");
+}
+
+#[test]
+fn display_iteration_with_success_and_error() {
+    let entry = MemoryEntry::Iteration {
+        thought: "trying two things".to_string(),
+        results: vec![
+            ToolResult {
+                tool: "shell".to_string(),
+                outcome: Outcome::Success("hello world".to_string()),
+            },
+            ToolResult {
+                tool: "shell".to_string(),
+                outcome: Outcome::Error("not found".to_string()),
+            },
+        ],
+    };
+    let display = format!("{}", entry);
+    assert!(display.contains("Thought: trying two things"));
+    assert!(display.contains("[shell] ✓ hello world"));
+    assert!(display.contains("[shell] ✗ not found"));
+}
+
+#[test]
+fn display_iteration_truncates_long_output() {
+    let long_output = "x".repeat(500);
+    let entry = MemoryEntry::Iteration {
+        thought: "checking".to_string(),
+        results: vec![ToolResult {
+            tool: "shell".to_string(),
+            outcome: Outcome::Success(long_output),
+        }],
+    };
+    let display = format!("{}", entry);
+    // Should be truncated to 200 chars
+    let success_line = display.lines().nth(1).unwrap();
+    // "[shell] ✓ " prefix + 200 chars of 'x'
+    assert!(success_line.contains(&"x".repeat(200)));
+    assert!(!success_line.contains(&"x".repeat(201)));
 }
