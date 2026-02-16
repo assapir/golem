@@ -72,4 +72,4 @@ This is a learning project. Currently implemented:
 
 ## License
 
-MIT
+GPL-2.0
