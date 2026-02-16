@@ -7,6 +7,8 @@ use std::io::{self, Write};
 use std::sync::Arc;
 use std::time::Duration;
 
+use std::path::PathBuf;
+
 use clap::{Parser, ValueEnum};
 
 use engine::react::{ReactConfig, ReactEngine};
@@ -14,7 +16,7 @@ use engine::Engine;
 use memory::sqlite::SqliteMemory;
 use thinker::human::HumanThinker;
 use thinker::Thinker;
-use tools::shell::ShellTool;
+use tools::shell::{ShellConfig, ShellMode, ShellTool};
 use tools::ToolRegistry;
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -46,6 +48,18 @@ struct Cli {
     #[arg(short, long, default_value_t = 30)]
     timeout: u64,
 
+    /// Allow write operations in shell tool (default: read-only)
+    #[arg(long, default_value_t = false)]
+    allow_write: bool,
+
+    /// Working directory for shell commands
+    #[arg(short, long)]
+    work_dir: Option<PathBuf>,
+
+    /// Skip confirmation prompts before executing commands
+    #[arg(long, default_value_t = false)]
+    no_confirm: bool,
+
     /// Run a single task and exit (non-interactive)
     #[arg(short, long)]
     run: Option<String>,
@@ -67,8 +81,19 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    let shell_config = ShellConfig {
+        mode: if cli.allow_write {
+            ShellMode::ReadWrite
+        } else {
+            ShellMode::ReadOnly
+        },
+        working_dir: cli.work_dir.unwrap_or_else(|| std::env::temp_dir().join("golem-sandbox")),
+        require_confirmation: !cli.no_confirm,
+        ..ShellConfig::default()
+    };
+
     let tools = Arc::new(ToolRegistry::new());
-    tools.register(Arc::new(ShellTool)).await;
+    tools.register(Arc::new(ShellTool::new(shell_config))).await;
 
     let memory = Box::new(SqliteMemory::new(&cli.db)?);
 

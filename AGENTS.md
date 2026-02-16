@@ -12,7 +12,11 @@ cargo run -- --help                   # show CLI options
 cargo run -- --provider human         # explicit provider (default)
 cargo run -- -r "some task"           # single task, non-interactive
 cargo run -- -d custom.db             # custom SQLite path
+cargo run -- -d :memory:              # ephemeral memory (no persistence)
 cargo run -- -m 10 -t 60             # max 10 iterations, 60s tool timeout
+cargo run -- --allow-write            # enable write operations in shell
+cargo run -- --no-confirm             # skip confirmation prompts
+cargo run -- -w /path/to/dir          # set shell working directory
 ```
 
 ## Testing
@@ -108,9 +112,16 @@ src/
 3. Add the match arm to construct the thinker.
 4. Test with `MockThinker` patterns in `tests/react_test.rs`.
 
-## Security considerations
+## Security model
 
-- `ShellTool` executes arbitrary shell commands. There is no sandboxing.
+The shell tool is locked down by default:
+
+- **Read-only mode** (default) — write commands (`rm`, `mv`, `cp`, `mkdir`, `git push`, etc.) are blocked. Use `--allow-write` to enable.
+- **Confirmation prompt** — every command requires `[y/N]` approval before execution. Use `--no-confirm` to skip (only for automated/test use).
+- **Command denylist** — `rm -rf /`, `mkfs`, `dd if=`, fork bombs, `shutdown`, `reboot` are always blocked regardless of mode.
+- **Environment filtering** — only safe env vars (`PATH`, `HOME`, `USER`, `SHELL`, `LANG`, `TERM`, `TZ`) are passed through. Secrets, tokens, API keys are stripped.
+- **Output truncation** — stdout/stderr capped at 50KB to prevent memory blowup.
+- **Working directory** — defaults to `/tmp/golem-sandbox/`, configurable via `--work-dir`.
 - SQLite database is stored as a plain file. No encryption.
 - No authentication or authorization on the engine yet.
 

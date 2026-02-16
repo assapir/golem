@@ -6,13 +6,20 @@ use golem::engine::Engine;
 use golem::memory::sqlite::SqliteMemory;
 use golem::thinker::mock::MockThinker;
 use golem::thinker::{Step, ToolCall, Thinker};
-use golem::tools::shell::ShellTool;
+use golem::tools::shell::{ShellConfig, ShellMode, ShellTool};
 use golem::tools::ToolRegistry;
 
 async fn build_engine(steps: Vec<Step>) -> ReactEngine {
     let thinker = Box::new(MockThinker::new(steps));
     let tools = Arc::new(ToolRegistry::new());
-    tools.register(Arc::new(ShellTool)).await;
+    tools
+        .register(Arc::new(ShellTool::new(ShellConfig {
+            mode: ShellMode::ReadWrite,
+            working_dir: std::env::current_dir().unwrap(),
+            require_confirmation: false,
+            ..ShellConfig::default()
+        })))
+        .await;
     let memory = Box::new(SqliteMemory::in_memory().unwrap());
     ReactEngine::new(thinker, tools, memory, ReactConfig::default())
 }
