@@ -1,3 +1,4 @@
+mod auth;
 mod engine;
 mod memory;
 mod thinker;
@@ -9,11 +10,14 @@ use std::time::Duration;
 
 use std::path::PathBuf;
 
-use clap::{Parser, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum};
 
+use auth::storage::{AuthStorage, Credential};
+use auth::oauth;
 use engine::react::{ReactConfig, ReactEngine};
 use engine::Engine;
 use memory::sqlite::SqliteMemory;
+use thinker::anthropic::AnthropicThinker;
 use thinker::human::HumanThinker;
 use thinker::Thinker;
 use tools::shell::{ShellConfig, ShellMode, ShellTool};
@@ -22,14 +26,17 @@ use tools::ToolRegistry;
 #[derive(Debug, Clone, ValueEnum)]
 enum Provider {
     Human,
-    // Ollama, // later
+    Anthropic,
 }
 
 #[derive(Parser)]
 #[command(name = "golem", version, about = "A clay body, animated by words.")]
 struct Cli {
+    #[command(subcommand)]
+    command: Option<Command>,
+
     /// LLM provider
-    #[arg(short, long, value_enum, default_value_t = Provider::Human)]
+    #[arg(short, long, value_enum, default_value_t = Provider::Anthropic)]
     provider: Provider,
 
     /// Model name (provider-specific, ignored for human)
@@ -65,11 +72,47 @@ struct Cli {
     run: Option<String>,
 }
 
+#[derive(Subcommand)]
+enum Command {
+    /// Log in to an LLM provider via OAuth
+    Login {
+        /// Provider to log in to
+        #[arg(value_enum, default_value_t = LoginProvider::Anthropic)]
+        provider: LoginProvider,
+    },
+    /// Log out from an LLM provider
+    Logout {
+        /// Provider to log out from
+        #[arg(value_enum, default_value_t = LoginProvider::Anthropic)]
+        provider: LoginProvider,
+    },
+}
+
+#[derive(Debug, Clone, ValueEnum)]
+enum LoginProvider {
+    Anthropic,
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    println!("golem v{} — a clay body, animated by words\n", env!("CARGO_PKG_VERSION"));
+    // Handle subcommands
+    if let Some(command) = &cli.command {
+        match command {
+            Command::Login { provider } => {
+                return handle_login(provider).await;
+            }
+            Command::Logout { provider } => {
+                return handle_logout(provider);
+            }
+        }
+    }
+
+    println!(
+        "golem v{} — a clay body, animated by words\n",
+        env!("CARGO_PKG_VERSION")
+    );
 
     // Wire up the thinker based on provider + model
     let thinker: Box<dyn Thinker> = match cli.provider {
@@ -79,6 +122,10 @@ async fn main() -> anyhow::Result<()> {
             }
             Box::new(HumanThinker)
         }
+        Provider::Anthropic => {
+            let auth = AuthStorage::new()?;
+            Box::new(AnthropicThinker::new(cli.model, auth))
+        }
     };
 
     let shell_config = ShellConfig {
@@ -87,7 +134,9 @@ async fn main() -> anyhow::Result<()> {
         } else {
             ShellMode::ReadOnly
         },
-        working_dir: cli.work_dir.unwrap_or_else(|| std::env::temp_dir().join("golem-sandbox")),
+        working_dir: cli
+            .work_dir
+            .unwrap_or_else(|| std::env::temp_dir().join("golem-sandbox")),
         require_confirmation: !cli.no_confirm,
         ..ShellConfig::default()
     };
@@ -135,5 +184,55 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+async fn handle_login(provider: &LoginProvider) -> anyhow::Result<()> {
+    match provider {
+        LoginProvider::Anthropic => {
+            println!("Logging in to Anthropic (Claude Pro/Max)...\n");
+
+            let (url, verifier) = oauth::build_authorize_url();
+
+            println!("Opening browser for authentication...");
+            println!("If the browser doesn't open, visit this URL:\n");
+            println!("  {}\n", url);
+
+            if let Err(e) = open::that(&url) {
+                eprintln!("Could not open browser: {}", e);
+                println!("Please open the URL above manually.");
+            }
+
+            print!("Paste the authorization code: ");
+            io::stdout().flush()?;
+            let mut code = String::new();
+            io::stdin().read_line(&mut code)?;
+            let code = code.trim();
+
+            if code.is_empty() {
+                anyhow::bail!("no authorization code provided");
+            }
+
+            println!("\nExchanging code for tokens...");
+            let credentials = oauth::exchange_code(code, &verifier).await?;
+
+            let storage = AuthStorage::new()?;
+            storage.set("anthropic", Credential::OAuth(credentials))?;
+
+            println!("✓ Logged in to Anthropic successfully!");
+            println!("  Credentials saved to ~/.golem/auth.json");
+        }
+    }
+    Ok(())
+}
+
+fn handle_logout(provider: &LoginProvider) -> anyhow::Result<()> {
+    match provider {
+        LoginProvider::Anthropic => {
+            let storage = AuthStorage::new()?;
+            storage.remove("anthropic")?;
+            println!("✓ Logged out from Anthropic.");
+        }
+    }
     Ok(())
 }

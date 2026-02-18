@@ -1,3 +1,4 @@
+pub mod anthropic;
 pub mod human;
 pub mod mock;
 
