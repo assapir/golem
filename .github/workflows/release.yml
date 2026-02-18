@@ -88,6 +88,9 @@ jobs:
           - target: aarch64-apple-darwin
             os: macos-latest
             artifact: golem-aarch64-macos
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            artifact: golem-x86_64-windows.exe
 
     steps:
       - uses: actions/checkout@v4
@@ -114,10 +117,13 @@ jobs:
         if: ${{ !matrix.cross }}
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Package binary
-        run: |
-          cd target/${{ matrix.target }}/release
-          cp golem ${{ github.workspace }}/${{ matrix.artifact }}
+      - name: Package binary (Unix)
+        if: runner.os != 'Windows'
+        run: cp target/${{ matrix.target }}/release/golem ${{ github.workspace }}/${{ matrix.artifact }}
+
+      - name: Package binary (Windows)
+        if: runner.os == 'Windows'
+        run: Copy-Item target/${{ matrix.target }}/release/golem.exe ${{ github.workspace }}/${{ matrix.artifact }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -141,7 +147,11 @@ jobs:
           for dir in artifacts/*/; do
             name=$(basename "$dir")
             cp "$dir/$name" "release/$name"
-            chmod +x "release/$name"
+            # Only chmod +x for non-Windows binaries
+            case "$name" in
+              *.exe) ;;
+              *) chmod +x "release/$name" ;;
+            esac
             cd release && sha256sum "$name" > "$name.sha256" && cd ..
           done
           ls -la release/
