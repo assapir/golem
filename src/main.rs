@@ -162,7 +162,14 @@ async fn main() -> anyhow::Result<()> {
         io::stdout().flush()?;
 
         let mut task = String::new();
-        io::stdin().read_line(&mut task)?;
+        let bytes_read = io::stdin().read_line(&mut task)?;
+
+        // Ctrl+D (EOF)
+        if bytes_read == 0 {
+            println!();
+            break;
+        }
+
         let task = task.trim();
 
         if task.is_empty() {
@@ -172,12 +179,21 @@ async fn main() -> anyhow::Result<()> {
             break;
         }
 
-        match engine.run(task).await {
-            Ok(answer) => println!("\n=> {}", answer),
-            Err(e) => eprintln!("\nerror: {}", e),
+        // Ctrl+C cancels the current task, not the REPL
+        tokio::select! {
+            result = engine.run(task) => {
+                match result {
+                    Ok(answer) => println!("\n=> {}", answer),
+                    Err(e) => eprintln!("\nerror: {}", e),
+                }
+            }
+            _ = tokio::signal::ctrl_c() => {
+                println!("\n\ninterrupted");
+            }
         }
     }
 
+    println!("goodbye.");
     Ok(())
 }
 
