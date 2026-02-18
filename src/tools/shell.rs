@@ -245,10 +245,8 @@ impl Tool for ShellTool {
         }
 
         // Confirmation prompt
-        if self.config.require_confirmation {
-            if !Self::confirm(cmd)? {
-                bail!("cancelled by user");
-            }
+        if self.config.require_confirmation && !Self::confirm(cmd)? {
+            bail!("cancelled by user");
         }
 
         // Ensure working directory exists

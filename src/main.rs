@@ -1,8 +1,3 @@
-mod engine;
-mod memory;
-mod thinker;
-mod tools;
-
 use std::io::{self, Write};
 use std::sync::Arc;
 use std::time::Duration;
@@ -11,13 +6,13 @@ use std::path::PathBuf;
 
 use clap::{Parser, ValueEnum};
 
-use engine::Engine;
-use engine::react::{ReactConfig, ReactEngine};
-use memory::sqlite::SqliteMemory;
-use thinker::Thinker;
-use thinker::human::HumanThinker;
-use tools::ToolRegistry;
-use tools::shell::{ShellConfig, ShellMode, ShellTool};
+use golem::engine::Engine;
+use golem::engine::react::{ReactConfig, ReactEngine};
+use golem::memory::sqlite::SqliteMemory;
+use golem::thinker::Thinker;
+use golem::thinker::human::HumanThinker;
+use golem::tools::ToolRegistry;
+use golem::tools::shell::{ShellConfig, ShellMode, ShellTool};
 
 #[derive(Debug, Clone, ValueEnum)]
 enum Provider {
