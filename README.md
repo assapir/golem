@@ -90,6 +90,22 @@ Options:
   -V, --version                Print version
 ```
 
+## REPL commands
+
+Type `/help` at the prompt to see all available commands:
+
+| Command | Aliases | Description |
+|---------|---------|-------------|
+| `/help` | `/h`, `/?` | Show available commands |
+| `/whoami` | | Show provider, model, and auth status |
+| `/tools` | | List registered tools |
+| `/tokens` | | Show session token usage |
+| `/login` | | Log in to the current provider |
+| `/logout` | | Log out from the current provider |
+| `/quit` | `quit`, `exit`, `/exit` | Exit the REPL |
+
+Commands are trait-based (`Command` trait + `CommandRegistry`) — plugins can register additional commands at runtime.
+
 ## Design
 
 Everything is a trait. Everything is swappable.
@@ -97,6 +113,7 @@ Everything is a trait. Everything is swappable.
 - **`Engine`** — the outermost boundary (`fn run(task) -> answer`)
 - **`Thinker`** — the brain (human, Anthropic, mock — picked via `--provider`)
 - **`Tool`** — something the agent can do (shell commands, more coming)
+- **`Command`** — built-in REPL commands (`/help`, `/login`, etc.)
 - **`Memory`** — what the agent remembers (SQLite-backed)
 
 See [AGENTS.md](AGENTS.md) for full architecture and contributing instructions.
@@ -113,7 +130,7 @@ See [AGENTS.md](AGENTS.md) for full architecture and contributing instructions.
 - [x] Clean Ctrl+C / Ctrl+D signal handling
 - [x] Startup banner with session info
 - [x] Cumulative token usage tracking
-- [x] Built-in `/` commands (`/help`, `/whoami`, `/tools`, `/tokens`)
+- [x] Trait-based REPL commands with plugin support
 - [ ] OpenAI provider
 - [ ] Google Gemini provider
 - [ ] Model selection
