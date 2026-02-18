@@ -9,6 +9,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 
 use golem::auth::oauth;
 use golem::auth::storage::{AuthStorage, Credential};
+use golem::consts::{AUTHOR, DEFAULT_MODEL, HOMEPAGE, REPO};
 use golem::engine::Engine;
 use golem::engine::react::{ReactConfig, ReactEngine};
 use golem::memory::sqlite::SqliteMemory;
@@ -142,7 +143,7 @@ async fn main() -> anyhow::Result<()> {
             let model = cli
                 .model
                 .clone()
-                .unwrap_or_else(|| "claude-sonnet-4-20250514".to_string());
+                .unwrap_or_else(|| DEFAULT_MODEL.to_string());
             let thinker = Box::new(AnthropicThinker::new(cli.model, auth)?);
             (thinker, "anthropic", model, auth_status)
         }
@@ -179,7 +180,8 @@ async fn main() -> anyhow::Result<()> {
    ╚═══════════════════════════════════════╝
 
    version   {}
-   by        Assaf Sapir <sapir.io>
+   by        {} <{}>
+   repo      {}
    provider  {} ({})
    auth      {}
    shell     {}
@@ -187,6 +189,9 @@ async fn main() -> anyhow::Result<()> {
    memory    {}
 "#,
         env!("CARGO_PKG_VERSION"),
+        AUTHOR,
+        HOMEPAGE,
+        REPO,
         provider_name,
         model_name,
         auth_status,
@@ -329,23 +334,10 @@ fn print_session_summary(usage: TokenUsage) {
     if usage.total() > 0 {
         println!(
             "session: {:>6} input + {:>6} output = {:>6} tokens",
-            format_tokens(usage.input_tokens),
-            format_tokens(usage.output_tokens),
-            format_tokens(usage.total()),
+            golem::consts::format_number(usage.input_tokens),
+            golem::consts::format_number(usage.output_tokens),
+            golem::consts::format_number(usage.total()),
         );
     }
     println!("goodbye.");
-}
-
-/// Format token count with comma separators (e.g. 1,234).
-fn format_tokens(n: u64) -> String {
-    let s = n.to_string();
-    let mut result = String::with_capacity(s.len() + s.len() / 3);
-    for (i, c) in s.chars().enumerate() {
-        if i > 0 && (s.len() - i).is_multiple_of(3) {
-            result.push(',');
-        }
-        result.push(c);
-    }
-    result
 }

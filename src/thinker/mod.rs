@@ -72,3 +72,51 @@ pub struct ToolDescription {
 pub trait Thinker: Send + Sync {
     async fn next_step(&self, context: &Context) -> Result<StepResult>;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn token_usage_default_is_zero() {
+        let usage = TokenUsage::default();
+        assert_eq!(usage.input_tokens, 0);
+        assert_eq!(usage.output_tokens, 0);
+        assert_eq!(usage.total(), 0);
+    }
+
+    #[test]
+    fn token_usage_total() {
+        let usage = TokenUsage {
+            input_tokens: 100,
+            output_tokens: 50,
+        };
+        assert_eq!(usage.total(), 150);
+    }
+
+    #[test]
+    fn token_usage_add_accumulates() {
+        let mut usage = TokenUsage {
+            input_tokens: 100,
+            output_tokens: 50,
+        };
+        usage.add(TokenUsage {
+            input_tokens: 200,
+            output_tokens: 75,
+        });
+        assert_eq!(usage.input_tokens, 300);
+        assert_eq!(usage.output_tokens, 125);
+        assert_eq!(usage.total(), 425);
+    }
+
+    #[test]
+    fn token_usage_add_zero_is_noop() {
+        let mut usage = TokenUsage {
+            input_tokens: 100,
+            output_tokens: 50,
+        };
+        usage.add(TokenUsage::default());
+        assert_eq!(usage.input_tokens, 100);
+        assert_eq!(usage.output_tokens, 50);
+    }
+}

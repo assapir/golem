@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::auth::AuthStorage;
+use crate::consts::DEFAULT_MODEL;
 use crate::memory::MemoryEntry;
 use crate::prompts::build_react_system_prompt;
 use crate::tools::Outcome;
@@ -12,7 +13,6 @@ use super::{Context, Step, StepResult, Thinker, TokenUsage, ToolCall};
 
 const API_URL: &str = "https://api.anthropic.com/v1/messages";
 const API_VERSION: &str = "2023-06-01";
-const DEFAULT_MODEL: &str = "claude-sonnet-4-20250514";
 const MAX_TOKENS: u32 = 8192;
 const OAUTH_BETA: &str = "claude-code-20250219,oauth-2025-04-20";
 const CLAUDE_CODE_VERSION: &str = "2.1.2";
