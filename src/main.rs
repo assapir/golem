@@ -118,7 +118,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Provider::Anthropic => {
             let auth = AuthStorage::new()?;
-            Box::new(AnthropicThinker::new(cli.model, auth))
+            Box::new(AnthropicThinker::new(cli.model, auth)?)
         }
     };
 
