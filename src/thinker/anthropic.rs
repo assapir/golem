@@ -16,6 +16,8 @@ const API_VERSION: &str = "2023-06-01";
 const MAX_TOKENS: u32 = 8192;
 const OAUTH_BETA: &str = "claude-code-20250219,oauth-2025-04-20";
 const CLAUDE_CODE_VERSION: &str = "2.1.2";
+const MAX_PARSE_RETRIES: usize = 1;
+const PARSE_RETRY_PROMPT: &str = "Your previous response was not valid JSON. You MUST respond with a JSON object only — no prose, no markdown, no explanation outside the JSON. Respond now with the correct JSON format.";
 
 /// An LLM thinker that calls the Anthropic Messages API.
 pub struct AnthropicThinker {
@@ -160,27 +162,25 @@ impl AnthropicThinker {
     }
 }
 
-#[async_trait]
-impl Thinker for AnthropicThinker {
-    async fn next_step(&self, context: &Context) -> Result<StepResult> {
-        let api_key = self
-            .auth
-            .get_api_key("anthropic", "ANTHROPIC_API_KEY")
-            .await?
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "no Anthropic credentials found. Run `golem login` or set ANTHROPIC_API_KEY."
-                )
-            })?;
+/// Raw API response: extracted text + optional token usage.
+struct RawResponse {
+    text: String,
+    usage: Option<TokenUsage>,
+}
 
-        let system = build_react_system_prompt(&context.available_tools);
-        let messages = Self::build_messages(context);
-
+impl AnthropicThinker {
+    /// Send messages to the Anthropic API and return the raw text + usage.
+    async fn call_api(
+        &self,
+        api_key: &str,
+        system: &str,
+        messages: &[Message],
+    ) -> Result<RawResponse> {
         let body = ApiRequest {
             model: &self.model,
             max_tokens: MAX_TOKENS,
-            system: &system,
-            messages: &messages,
+            system,
+            messages,
         };
 
         let is_oauth = api_key.contains("sk-ant-oat");
@@ -192,7 +192,6 @@ impl Thinker for AnthropicThinker {
             .header("content-type", "application/json");
 
         if is_oauth {
-            // OAuth tokens use Bearer auth + required beta/identity headers
             req = req
                 .header("authorization", format!("Bearer {}", api_key))
                 .header("anthropic-beta", OAUTH_BETA)
@@ -202,8 +201,7 @@ impl Thinker for AnthropicThinker {
                 )
                 .header("x-app", "cli");
         } else {
-            // API keys use x-api-key header
-            req = req.header("x-api-key", &api_key);
+            req = req.header("x-api-key", api_key);
         }
 
         let resp = req.json(&body).send().await?;
@@ -216,7 +214,6 @@ impl Thinker for AnthropicThinker {
 
         let api_resp: ApiResponse = resp.json().await?;
 
-        // Extract text from content blocks
         let text: String = api_resp
             .content
             .iter()
@@ -239,12 +236,76 @@ impl Thinker for AnthropicThinker {
             output_tokens: u.output_tokens,
         });
 
-        let step = Self::parse_response(&text)?;
-        Ok(StepResult { step, usage })
+        Ok(RawResponse { text, usage })
     }
 }
 
-/// Extract JSON from text that may be wrapped in markdown code fences.
+#[async_trait]
+impl Thinker for AnthropicThinker {
+    async fn next_step(&self, context: &Context) -> Result<StepResult> {
+        let api_key = self
+            .auth
+            .get_api_key("anthropic", "ANTHROPIC_API_KEY")
+            .await?
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "no Anthropic credentials found. Run `golem login` or set ANTHROPIC_API_KEY."
+                )
+            })?;
+
+        let system = build_react_system_prompt(&context.available_tools);
+        let mut messages = Self::build_messages(context);
+        let mut total_usage = TokenUsage::default();
+
+        // Try parsing, with up to MAX_PARSE_RETRIES correction rounds
+        for attempt in 0..=MAX_PARSE_RETRIES {
+            let raw = self.call_api(&api_key, &system, &messages).await?;
+
+            if let Some(usage) = raw.usage {
+                total_usage.add(usage);
+            }
+
+            match Self::parse_response(&raw.text) {
+                Ok(step) => {
+                    let combined = if total_usage.total() > 0 {
+                        Some(total_usage)
+                    } else {
+                        None
+                    };
+                    return Ok(StepResult {
+                        step,
+                        usage: combined,
+                    });
+                }
+                Err(parse_err) => {
+                    if attempt < MAX_PARSE_RETRIES {
+                        eprintln!(
+                            "warning: LLM returned invalid JSON (attempt {}), retrying with correction",
+                            attempt + 1
+                        );
+                        // Append the malformed response + correction as context
+                        messages.push(Message {
+                            role: "assistant".to_string(),
+                            content: raw.text,
+                        });
+                        messages.push(Message {
+                            role: "user".to_string(),
+                            content: PARSE_RETRY_PROMPT.to_string(),
+                        });
+                    } else {
+                        return Err(parse_err);
+                    }
+                }
+            }
+        }
+
+        // Unreachable: the loop always returns or errors
+        bail!("unexpected: parse retry loop exited without result")
+    }
+}
+
+/// Extract JSON from text that may be wrapped in markdown code fences or
+/// preceded/followed by prose text.
 fn extract_json(text: &str) -> &str {
     let trimmed = text.trim();
 
@@ -258,6 +319,16 @@ fn extract_json(text: &str) -> &str {
         && let Some(json) = after.strip_suffix("```")
     {
         return json.trim();
+    }
+
+    // If the trimmed text doesn't start with '{', try to find a JSON object
+    // by locating the first '{' and last '}' (handles prose before/after JSON)
+    if !trimmed.starts_with('{')
+        && let Some(start) = trimmed.find('{')
+        && let Some(end) = trimmed.rfind('}')
+        && end > start
+    {
+        return &trimmed[start..=end];
     }
 
     trimmed
@@ -459,10 +530,73 @@ mod tests {
     }
 
     #[test]
-    fn extract_json_no_closing_fence_returns_as_is() {
-        // Malformed fence — just return trimmed
+    fn extract_json_no_closing_fence_still_extracts() {
+        // Malformed fence without closing ``` — we still find the JSON object
         let input = "```json\n{\"a\": 1}";
-        assert_eq!(extract_json(input), input.trim());
+        assert_eq!(extract_json(input), "{\"a\": 1}");
+    }
+
+    #[test]
+    fn extract_json_prose_before_json() {
+        let input = r#"Let me think about this carefully.
+
+{"thought": "I know the answer", "answer": "42"}"#;
+        assert_eq!(
+            extract_json(input),
+            r#"{"thought": "I know the answer", "answer": "42"}"#
+        );
+    }
+
+    #[test]
+    fn extract_json_prose_before_and_after() {
+        let input = r#"Here's my response:
+{"thought": "done", "answer": "hello"}
+Hope that helps!"#;
+        assert_eq!(
+            extract_json(input),
+            r#"{"thought": "done", "answer": "hello"}"#
+        );
+    }
+
+    #[test]
+    fn extract_json_prose_with_nested_braces() {
+        let input = r#"I'll check that.
+
+{
+  "thought": "checking files",
+  "action": {
+    "calls": [
+      {"tool": "shell", "args": {"command": "ls"}}
+    ]
+  }
+}"#;
+        let extracted = extract_json(input);
+        // Should parse as valid JSON
+        let parsed: serde_json::Value = serde_json::from_str(extracted).unwrap();
+        assert!(parsed.get("action").is_some());
+    }
+
+    #[test]
+    fn parse_prose_before_json_succeeds() {
+        let input = r#"I need to understand the context.
+
+{
+  "thought": "Let me check the system",
+  "action": {
+    "calls": [
+      {"tool": "shell", "args": {"command": "ps aux"}}
+    ]
+  }
+}"#;
+        let step = AnthropicThinker::parse_response(input).unwrap();
+        match step {
+            Step::Act { thought, calls } => {
+                assert_eq!(thought, "Let me check the system");
+                assert_eq!(calls.len(), 1);
+                assert_eq!(calls[0].tool, "shell");
+            }
+            _ => panic!("expected Act"),
+        }
     }
 
     #[test]
