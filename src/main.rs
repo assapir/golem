@@ -10,7 +10,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use golem::auth::oauth;
 use golem::auth::storage::{AuthStorage, Credential};
 use golem::banner::{BannerInfo, print_banner, print_session_summary};
-use golem::commands::{SessionInfo, handle_command};
+use golem::commands::{CommandResult, SessionInfo, handle_command};
 use golem::consts::DEFAULT_MODEL;
 use golem::engine::Engine;
 use golem::engine::react::{ReactConfig, ReactEngine};
@@ -108,7 +108,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Wire up the thinker based on provider + model
-    let (thinker, provider_name, model_name, auth_status): (
+    let (thinker, provider_name, model_name, mut auth_status): (
         Box<dyn Thinker>,
         &str,
         String,
@@ -265,8 +265,13 @@ async fn main() -> anyhow::Result<()> {
             tools: &tool_names,
             usage: engine.session_usage(),
         };
-        if handle_command(task, &session_info) {
-            continue;
+        match handle_command(task, &session_info).await {
+            CommandResult::Handled => continue,
+            CommandResult::AuthChanged(new_status) => {
+                auth_status = new_status;
+                continue;
+            }
+            CommandResult::NotACommand => {}
         }
 
         // Ctrl+C during task execution cancels the task, not the REPL
