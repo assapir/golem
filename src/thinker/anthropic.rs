@@ -24,21 +24,11 @@ pub struct AnthropicThinker {
 }
 
 impl AnthropicThinker {
-    pub fn new(model: Option<String>, auth: AuthStorage) -> Result<Self> {
-        let provider = "anthropic";
-        let has_cred = auth.get(provider)?.is_some()
-            || std::env::var("ANTHROPIC_API_KEY")
-                .map(|k| !k.is_empty())
-                .unwrap_or(false);
-        if !has_cred {
-            bail!(
-                "not authenticated for {provider}\n\n  Run:  golem /login\n  Or:   export ANTHROPIC_API_KEY=sk-ant-..."
-            );
-        }
-        Ok(Self {
+    pub fn new(model: Option<String>, auth: AuthStorage) -> Self {
+        Self {
             model: model.unwrap_or_else(|| DEFAULT_MODEL.to_string()),
             auth,
-        })
+        }
     }
 
     fn build_messages(context: &Context) -> Vec<Message> {

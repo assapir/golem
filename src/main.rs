@@ -158,7 +158,7 @@ async fn main() -> anyhow::Result<()> {
                 .model
                 .clone()
                 .unwrap_or_else(|| DEFAULT_MODEL.to_string());
-            let thinker = Box::new(AnthropicThinker::new(cli.model, auth)?);
+            let thinker = Box::new(AnthropicThinker::new(cli.model, auth));
             (thinker, "anthropic", model, auth_status)
         }
     };
