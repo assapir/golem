@@ -7,10 +7,11 @@ A clay body, animated by words. Rust AI agent harness with ReAct loop, pluggable
 ```bash
 cargo build                           # debug build
 cargo build --release                 # release build
-cargo run                             # interactive REPL
+cargo run                             # interactive REPL (default: anthropic provider)
 cargo run -- --help                   # show CLI options
-cargo run -- --provider human         # human provider (stdin)
-cargo run -- --provider anthropic     # anthropic provider (default)
+cargo run -- login                    # OAuth login to Anthropic
+cargo run -- logout                   # remove stored credentials
+cargo run -- -p human                 # use human provider (stdin)
 cargo run -- --model claude-sonnet-4-20250514  # specific model
 cargo run -- -r "some task"           # single task, non-interactive
 cargo run -- -d custom.db             # custom SQLite path
@@ -19,8 +20,27 @@ cargo run -- -m 10 -t 60             # max 10 iterations, 60s tool timeout
 cargo run -- --allow-write            # enable write operations in shell
 cargo run -- --no-confirm             # skip confirmation prompts
 cargo run -- -w /path/to/dir          # set shell working directory
-cargo run -- login                    # OAuth login to Anthropic
-cargo run -- logout                   # remove stored credentials
+```
+
+### CLI reference
+
+```
+Usage: golem [OPTIONS] [COMMAND]
+
+Commands:
+  login   Log in to an LLM provider via OAuth
+  logout  Log out from an LLM provider
+
+Options:
+  -p, --provider <PROVIDER>    LLM provider [default: anthropic] [possible values: human, anthropic]
+      --model <MODEL>          Model name (provider-specific, ignored for human)
+  -d, --db <DB>                SQLite database path [default: golem.db]
+  -m, --max-iterations <N>     Max ReAct loop iterations [default: 20]
+  -t, --timeout <SECONDS>      Tool execution timeout [default: 30]
+      --allow-write            Allow write operations in shell (default: read-only)
+  -w, --work-dir <PATH>        Working directory for shell commands
+      --no-confirm             Skip confirmation prompts before executing commands
+  -r, --run <TASK>             Run a single task and exit
 ```
 
 ## Testing
@@ -203,6 +223,28 @@ gh workflow run release.yml -f bump=major   # 0.1.0 → 1.0.0
 
 Version is auto-managed in Cargo.toml — don't edit it manually.
 
+### AUR package (`golem-bin`)
+
+The `aur/` directory contains the PKGBUILD for the Arch Linux AUR binary package.
+
+- `aur/PKGBUILD` — downloads pre-built binary from GitHub releases (x86_64 + aarch64)
+- `aur/.SRCINFO` — generated metadata (`makepkg --printsrcinfo > .SRCINFO`)
+- `aur/update-pkgbuild.sh` — helper script to update version + checksums locally
+
+The release workflow's `aur` job auto-publishes to AUR after creating a GitHub Release.
+Requires `AUR_SSH_KEY` secret (see issue #12).
+
+```bash
+# Install from AUR
+yay -S golem-bin
+
+# Test PKGBUILD locally
+cd aur && makepkg -sf
+
+# Update PKGBUILD manually
+./aur/update-pkgbuild.sh 0.2.0
+```
+
 ## Security model
 
 The shell tool is locked down by default:
@@ -216,6 +258,12 @@ The shell tool is locked down by default:
 - Auth tokens stored in `~/.golem/auth.json` with `0600` permissions (owner read/write only).
 - SQLite database is stored as a plain file. No encryption.
 - No authentication or authorization on the engine yet.
+
+## Workflow
+
+- **Always use worktrees** — never edit main directly. Create a feature branch in `.worktrees/`, push, open a PR, merge via squash.
+- **Always update docs when finishing a feature** — before opening a PR, update AGENTS.md, README.md, and any other relevant docs to reflect the changes. Outdated docs are bugs.
+- **Version is auto-managed** — don't edit `Cargo.toml` version or `aur/PKGBUILD` version manually. The CD pipeline handles it.
 
 ## Machine
 
