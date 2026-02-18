@@ -152,3 +152,63 @@ jobs:
           tag_name: ${{ needs.version.outputs.tag }}
           generate_release_notes: true
           files: release/*
+
+  aur:
+    name: Update AUR Package
+    needs: [version, release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - name: Update PKGBUILD
+        run: |
+          VERSION="${{ needs.version.outputs.version }}"
+          cd aur
+
+          # Get checksums from the release we just created
+          for arch in x86_64 aarch64; do
+            curl -sfL "https://github.com/assapir/golem/releases/download/v${VERSION}/golem-${arch}-linux.sha256" \
+              -o "/tmp/${arch}.sha256"
+          done
+
+          SHA_X86=$(awk '{print $1}' /tmp/x86_64.sha256)
+          SHA_AARCH64=$(awk '{print $1}' /tmp/aarch64.sha256)
+
+          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+          sed -i "s/^sha256sums_x86_64=.*/sha256sums_x86_64=('${SHA_X86}')/" PKGBUILD
+          sed -i "s/^sha256sums_aarch64=.*/sha256sums_aarch64=('${SHA_AARCH64}')/" PKGBUILD
+
+          echo "Updated PKGBUILD to ${VERSION}"
+          cat PKGBUILD
+
+      - name: Publish to AUR
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+        run: |
+          # Set up SSH for AUR
+          mkdir -p ~/.ssh
+          echo "$AUR_SSH_KEY" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          echo "Host aur.archlinux.org" >> ~/.ssh/config
+          echo "  IdentityFile ~/.ssh/aur" >> ~/.ssh/config
+          echo "  User aur" >> ~/.ssh/config
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
+
+          # Clone AUR repo, update, push
+          git clone ssh://aur@aur.archlinux.org/golem-bin.git /tmp/aur-repo
+
+          cp aur/PKGBUILD /tmp/aur-repo/PKGBUILD
+
+          cd /tmp/aur-repo
+          # Generate .SRCINFO (need makepkg from pacman)
+          docker run --rm -v "$PWD:/pkg" -w /pkg archlinux:latest \
+            bash -c "pacman -Sy --noconfirm pacman-contrib && makepkg --printsrcinfo > .SRCINFO"
+
+          git config user.name "Assaf Sapir"
+          git config user.email "assapir@users.noreply.github.com"
+          git add PKGBUILD .SRCINFO
+          git commit -m "Update to ${{ needs.version.outputs.version }}"
+          git push
