@@ -9,12 +9,12 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 
 use golem::auth::oauth;
 use golem::auth::storage::{AuthStorage, Credential};
-use golem::consts::{AUTHOR, DEFAULT_MODEL, HOMEPAGE, REPO};
+use golem::banner::{BannerInfo, print_banner, print_session_summary};
+use golem::consts::DEFAULT_MODEL;
 use golem::engine::Engine;
 use golem::engine::react::{ReactConfig, ReactEngine};
 use golem::memory::sqlite::SqliteMemory;
 use golem::thinker::Thinker;
-use golem::thinker::TokenUsage;
 use golem::thinker::anthropic::AnthropicThinker;
 use golem::thinker::human::HumanThinker;
 use golem::tools::ToolRegistry;
@@ -166,44 +166,25 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let memory_label = if cli.db == ":memory:" {
-        "ephemeral".to_string()
+        "ephemeral"
     } else {
-        cli.db.clone()
+        &cli.db
     };
 
-    // Startup banner
-    println!(
-        r#"
-   ╔═══════════════════════════════════════╗
-   ║              G O L E M                ║
-   ║     a clay body, animated by words    ║
-   ╚═══════════════════════════════════════╝
+    let shell_label = if shell_mode == ShellMode::ReadWrite {
+        "read-write"
+    } else {
+        "read-only"
+    };
 
-   version   {}
-   by        {}
-   home      {}
-   repo      {}
-   provider  {} ({})
-   auth      {}
-   shell     {}
-   workdir   {}
-   memory    {}
-"#,
-        env!("CARGO_PKG_VERSION"),
-        AUTHOR,
-        HOMEPAGE,
-        REPO,
-        provider_name,
-        model_name,
-        auth_status,
-        if shell_mode == ShellMode::ReadWrite {
-            "read-write"
-        } else {
-            "read-only"
-        },
-        working_dir.display(),
-        memory_label,
-    );
+    print_banner(&BannerInfo {
+        provider: provider_name,
+        model: &model_name,
+        auth_status: &auth_status,
+        shell_mode: shell_label,
+        working_dir: &working_dir,
+        memory: memory_label,
+    });
 
     let tools = Arc::new(ToolRegistry::new());
     tools.register(Arc::new(ShellTool::new(shell_config))).await;
@@ -331,14 +312,4 @@ fn handle_logout(provider: &LoginProvider) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn print_session_summary(usage: TokenUsage) {
-    if usage.total() > 0 {
-        println!(
-            "session: {:>6} input + {:>6} output = {:>6} tokens",
-            golem::consts::format_number(usage.input_tokens),
-            golem::consts::format_number(usage.output_tokens),
-            golem::consts::format_number(usage.total()),
-        );
-    }
-    println!("goodbye.");
-}
+
