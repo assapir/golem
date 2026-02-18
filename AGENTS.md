@@ -44,6 +44,7 @@ src/
 ├── main.rs              # CLI, wiring, REPL
 ├── lib.rs               # re-exports
 ├── banner.rs            # startup banner + session summary
+├── commands/            # Command trait + CommandRegistry + built-in /slash commands
 ├── consts.rs            # project-wide constants (from Cargo.toml metadata)
 ├── auth/                # OAuth PKCE flow + credential storage (~/.golem/auth.json)
 ├── engine/              # Engine trait + ReactEngine (ReAct loop)

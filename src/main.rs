@@ -10,6 +10,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use golem::auth::oauth;
 use golem::auth::storage::{AuthStorage, Credential};
 use golem::banner::{BannerInfo, print_banner, print_session_summary};
+use golem::commands::{CommandRegistry, CommandResult, SessionInfo};
 use golem::consts::DEFAULT_MODEL;
 use golem::engine::Engine;
 use golem::engine::react::{ReactConfig, ReactEngine};
@@ -107,7 +108,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Wire up the thinker based on provider + model
-    let (thinker, provider_name, model_name, auth_status): (
+    let (thinker, provider_name, model_name, mut auth_status): (
         Box<dyn Thinker>,
         &str,
         String,
@@ -189,6 +190,14 @@ async fn main() -> anyhow::Result<()> {
     let tools = Arc::new(ToolRegistry::new());
     tools.register(Arc::new(ShellTool::new(shell_config))).await;
 
+    // Collect tool names for /tools command
+    let tool_names: Vec<String> = tools
+        .descriptions()
+        .await
+        .iter()
+        .map(|t| format!("{} — {}", t.name, t.description))
+        .collect();
+
     let memory = Box::new(SqliteMemory::new(&cli.db)?);
 
     let config = ReactConfig {
@@ -197,6 +206,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let mut engine = ReactEngine::new(thinker, tools, memory, config);
+    let commands = CommandRegistry::new();
 
     // Single task mode
     if let Some(task) = cli.run {
@@ -243,8 +253,24 @@ async fn main() -> anyhow::Result<()> {
         if task.is_empty() {
             continue;
         }
-        if task == "quit" || task == "exit" {
-            break;
+
+        // Built-in slash commands (includes /quit, quit, exit)
+        let session_info = SessionInfo {
+            provider: provider_name,
+            model: &model_name,
+            auth_status: &auth_status,
+            shell_mode: shell_label,
+            tools: &tool_names,
+            usage: engine.session_usage(),
+        };
+        match commands.dispatch(task, &session_info).await {
+            CommandResult::Handled => continue,
+            CommandResult::AuthChanged(new_status) => {
+                auth_status = new_status;
+                continue;
+            }
+            CommandResult::Quit => break,
+            CommandResult::NotACommand => {}
         }
 
         // Ctrl+C during task execution cancels the task, not the REPL
