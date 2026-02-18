@@ -26,6 +26,7 @@ pub struct SessionInfo<'a> {
     pub shell_mode: &'a str,
     pub tools: &'a [String],
     pub usage: TokenUsage,
+    pub db_path: &'a str,
 }
 
 /// What the REPL should do after a command runs.
@@ -170,6 +171,7 @@ mod tests {
             shell_mode: "read-only",
             tools: &[],
             usage: TokenUsage::default(),
+            db_path: ":memory:",
         }
     }
 

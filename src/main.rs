@@ -275,6 +275,7 @@ async fn main() -> anyhow::Result<()> {
             shell_mode: shell_label,
             tools: &tool_names,
             usage: engine.session_usage(),
+            db_path: &db_path,
         };
         match commands.dispatch(task, &session_info).await {
             CommandResult::Handled => continue,

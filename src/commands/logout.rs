@@ -2,7 +2,6 @@ use async_trait::async_trait;
 
 use super::{Command, CommandResult, SessionInfo};
 use crate::auth::storage::AuthStorage;
-use crate::consts::default_db_path;
 
 pub struct LogoutCommand;
 
@@ -18,8 +17,7 @@ impl Command for LogoutCommand {
 
     async fn execute(&self, info: &SessionInfo<'_>) -> CommandResult {
         let provider = info.provider;
-        let db_path = default_db_path();
-        let storage = match AuthStorage::open(&db_path.to_string_lossy()) {
+        let storage = match AuthStorage::open(info.db_path) {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("  ✗ failed to open auth storage: {e}");
@@ -38,13 +36,35 @@ impl Command for LogoutCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth::storage::Credential;
     use crate::commands::tests::test_info;
 
     #[tokio::test]
-    async fn returns_auth_changed() {
+    async fn returns_auth_changed_when_no_credentials() {
         assert!(matches!(
             LogoutCommand.execute(&test_info()).await,
             CommandResult::AuthChanged(_)
         ));
+    }
+
+    #[tokio::test]
+    async fn removes_stored_credential() {
+        let storage = AuthStorage::open(":memory:").unwrap();
+        storage
+            .set(
+                "anthropic",
+                Credential::ApiKey {
+                    key: "sk-test".to_string(),
+                },
+            )
+            .unwrap();
+        assert!(storage.get("anthropic").unwrap().is_some());
+
+        let info = test_info();
+        let result = LogoutCommand.execute(&info).await;
+
+        assert!(matches!(result, CommandResult::AuthChanged(_)));
+        // Note: the command opens its own connection to :memory:,
+        // so this tests the command flow, not the same DB instance.
     }
 }

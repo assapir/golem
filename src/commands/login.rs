@@ -3,7 +3,6 @@ use async_trait::async_trait;
 use super::{Command, CommandResult, SessionInfo};
 use crate::auth::oauth;
 use crate::auth::storage::{AuthStorage, Credential};
-use crate::consts::default_db_path;
 
 pub struct LoginCommand;
 
@@ -47,8 +46,7 @@ impl Command for LoginCommand {
         println!("\nExchanging code for tokens...");
         match oauth::exchange_code(code, &verifier).await {
             Ok(credentials) => {
-                let db_path = default_db_path();
-                let storage = match AuthStorage::open(&db_path.to_string_lossy()) {
+                let storage = match AuthStorage::open(info.db_path) {
                     Ok(s) => s,
                     Err(e) => {
                         eprintln!("  ✗ failed to open auth storage: {e}");
@@ -67,5 +65,17 @@ impl Command for LoginCommand {
                 CommandResult::Handled
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn metadata() {
+        assert_eq!(LoginCommand.name(), "/login");
+        assert!(LoginCommand.aliases().is_empty());
+        assert!(!LoginCommand.description().is_empty());
     }
 }
