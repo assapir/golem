@@ -200,13 +200,17 @@ jobs:
           # Clone AUR repo, update, push
           git clone ssh://aur@aur.archlinux.org/golem-bin.git /tmp/aur-repo
 
-          cp aur/PKGBUILD /tmp/aur-repo/PKGBUILD
-
-          cd /tmp/aur-repo
-          # Generate .SRCINFO (makepkg refuses to run as root)
-          docker run --rm -v "$PWD:/pkg" archlinux:latest \
+          # Generate .SRCINFO in a temp dir (avoid Docker chown breaking .git)
+          mkdir -p /tmp/srcinfo-build
+          cp aur/PKGBUILD /tmp/srcinfo-build/PKGBUILD
+          docker run --rm -v /tmp/srcinfo-build:/pkg archlinux:latest \
             bash -c "useradd -m builder && chown -R builder /pkg && su builder -c 'cd /pkg && makepkg --printsrcinfo > .SRCINFO'"
 
+          # Copy into AUR repo and push
+          cp /tmp/srcinfo-build/PKGBUILD /tmp/aur-repo/PKGBUILD
+          cp /tmp/srcinfo-build/.SRCINFO /tmp/aur-repo/.SRCINFO
+
+          cd /tmp/aur-repo
           git config user.name "Assaf Sapir"
           git config user.email "assapir@users.noreply.github.com"
           git add PKGBUILD .SRCINFO
