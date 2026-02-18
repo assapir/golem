@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use crate::auth::AuthStorage;
 use crate::memory::MemoryEntry;
+use crate::prompts::build_react_system_prompt;
 use crate::tools::Outcome;
 
 use super::{Context, Step, Thinker, ToolCall};
@@ -28,53 +29,6 @@ impl AnthropicThinker {
             model: model.unwrap_or_else(|| DEFAULT_MODEL.to_string()),
             auth,
         }
-    }
-
-    fn build_system_prompt(context: &Context) -> String {
-        let mut tools_desc = String::new();
-        for tool in &context.available_tools {
-            tools_desc.push_str(&format!("- {}: {}\n", tool.name, tool.description));
-        }
-
-        format!(
-            r#"You are Golem, an AI agent that solves tasks using a ReAct loop.
-
-You have access to these tools:
-{tools_desc}
-## How to respond
-
-You MUST respond with valid JSON in one of two formats:
-
-### To use tools:
-```json
-{{
-  "thought": "your reasoning about what to do next",
-  "action": {{
-    "calls": [
-      {{
-        "tool": "tool_name",
-        "args": {{"arg_name": "arg_value"}}
-      }}
-    ]
-  }}
-}}
-```
-
-### To give the final answer:
-```json
-{{
-  "thought": "your reasoning about why you're done",
-  "answer": "your final answer to the task"
-}}
-```
-
-## Rules
-- Always respond with ONLY valid JSON, no markdown fences, no extra text.
-- Think step by step. Use tools to gather information before answering.
-- You can make multiple tool calls in parallel by adding more items to the "calls" array.
-- If a tool returns an error, analyze it and try a different approach.
-- When you have enough information, use the "answer" format to respond."#
-        )
     }
 
     fn build_messages(context: &Context) -> Vec<Message> {
@@ -219,7 +173,7 @@ impl Thinker for AnthropicThinker {
                 )
             })?;
 
-        let system = Self::build_system_prompt(context);
+        let system = build_react_system_prompt(&context.available_tools);
         let messages = Self::build_messages(context);
 
         let body = ApiRequest {
@@ -511,30 +465,6 @@ mod tests {
         // Malformed fence — just return trimmed
         let input = "```json\n{\"a\": 1}";
         assert_eq!(extract_json(input), input.trim());
-    }
-
-    #[test]
-    fn build_system_prompt_lists_tools() {
-        let context = Context {
-            task: "test".to_string(),
-            history: vec![],
-            available_tools: vec![
-                crate::thinker::ToolDescription {
-                    name: "shell".to_string(),
-                    description: "run commands".to_string(),
-                },
-                crate::thinker::ToolDescription {
-                    name: "read".to_string(),
-                    description: "read files".to_string(),
-                },
-            ],
-        };
-
-        let prompt = AnthropicThinker::build_system_prompt(&context);
-        assert!(prompt.contains("- shell: run commands"));
-        assert!(prompt.contains("- read: read files"));
-        assert!(prompt.contains("Golem"));
-        assert!(prompt.contains("ReAct"));
     }
 
     #[test]
