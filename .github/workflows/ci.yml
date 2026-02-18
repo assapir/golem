@@ -12,7 +12,7 @@ env:
 
 jobs:
   check:
-    name: Check / Test
+    name: Lint & Test
     runs-on: ubuntu-latest
     if: "!startsWith(github.event.head_commit.message, 'chore: bump version')"
     steps:
@@ -32,3 +32,23 @@ jobs:
 
       - name: Test
         run: cargo test
+
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    if: "!startsWith(github.event.head_commit.message, 'chore: bump version')"
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}
+
+      - name: Build
+        run: cargo build

@@ -24,13 +24,18 @@ yay -S golem-bin
 
 ### GitHub Releases
 
-Pre-built binaries for x86_64 and aarch64 (Linux + macOS):
+Pre-built binaries for x86_64 and aarch64 (Linux + macOS + Windows):
 
 ```bash
 # Download latest release (example for x86_64 Linux)
 curl -LO https://github.com/assapir/golem/releases/latest/download/golem-x86_64-linux
 chmod +x golem-x86_64-linux
 sudo mv golem-x86_64-linux /usr/local/bin/golem
+```
+
+```powershell
+# Windows (PowerShell)
+Invoke-WebRequest -Uri https://github.com/assapir/golem/releases/latest/download/golem-x86_64-windows.exe -OutFile golem.exe
 ```
 
 ### Build from source
