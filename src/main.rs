@@ -252,11 +252,8 @@ async fn main() -> anyhow::Result<()> {
         if task.is_empty() {
             continue;
         }
-        if task == "quit" || task == "exit" {
-            break;
-        }
 
-        // Built-in slash commands
+        // Built-in slash commands (includes /quit, quit, exit)
         let session_info = SessionInfo {
             provider: provider_name,
             model: &model_name,
@@ -271,6 +268,7 @@ async fn main() -> anyhow::Result<()> {
                 auth_status = new_status;
                 continue;
             }
+            CommandResult::Quit => break,
             CommandResult::NotACommand => {}
         }
 
