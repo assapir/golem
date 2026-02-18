@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod banner;
+pub mod commands;
 pub mod consts;
 pub mod engine;
 pub mod memory;

@@ -113,6 +113,7 @@ See [AGENTS.md](AGENTS.md) for full architecture and contributing instructions.
 - [x] Clean Ctrl+C / Ctrl+D signal handling
 - [x] Startup banner with session info
 - [x] Cumulative token usage tracking
+- [x] Built-in `/` commands (`/help`, `/whoami`, `/tools`, `/tokens`)
 - [ ] OpenAI provider
 - [ ] Google Gemini provider
 - [ ] Model selection
