@@ -179,7 +179,7 @@ async fn main() -> anyhow::Result<()> {
    ╚═══════════════════════════════════════╝
 
    version   {}
-   by        Assaf Sapir <github.com/assapir/golem>
+   by        Assaf Sapir <sapir.io>
    provider  {} ({})
    auth      {}
    shell     {}
