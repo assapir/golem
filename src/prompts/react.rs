@@ -1,6 +1,6 @@
 use crate::thinker::ToolDescription;
 
-const INTRO: &str = "You are Golem, an AI agent that solves tasks using a ReAct loop.";
+const INTRO: &str = "You are Golem, an AI agent that solves tasks using a ReAct loop.\n\nCRITICAL: Your entire response must be a single JSON object. No prose, no explanation, no markdown — just JSON.";
 
 const TOOL_FORMAT: &str = r#"{
   "thought": "brief reasoning about what to do next",
@@ -20,7 +20,9 @@ const ANSWER_FORMAT: &str = r#"{
 }"#;
 
 const RULES: &[&str] = &[
-    "Output JSON only. No markdown fences, no extra text, no extra keys.",
+    "Your ENTIRE response must be a single JSON object. Never include text before or after the JSON.",
+    "No markdown fences, no extra text, no extra keys.",
+    "Put all reasoning inside the \"thought\" field — never outside the JSON.",
     "Thought should be brief (1-2 sentences).",
     "If the task can be answered without tools, respond with the answer format directly.",
     "Use only the tools listed above. Never invent tool names.",
@@ -140,5 +142,14 @@ mod tests {
     fn includes_args_matching_rule() {
         let prompt = build_react_system_prompt(&[]);
         assert!(prompt.contains("expected args exactly"));
+    }
+
+    #[test]
+    fn emphasizes_json_only_output() {
+        let prompt = build_react_system_prompt(&[]);
+        // The JSON-only constraint should appear early (in INTRO) and in rules
+        assert!(prompt.contains("CRITICAL"));
+        assert!(prompt.contains("entire response must be a single JSON object"));
+        assert!(prompt.contains("inside the \"thought\" field"));
     }
 }
