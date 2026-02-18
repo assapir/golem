@@ -10,7 +10,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use golem::auth::oauth;
 use golem::auth::storage::{AuthStorage, Credential};
 use golem::banner::{BannerInfo, print_banner, print_session_summary};
-use golem::commands::{CommandResult, SessionInfo, handle_command};
+use golem::commands::{CommandRegistry, CommandResult, SessionInfo};
 use golem::consts::DEFAULT_MODEL;
 use golem::engine::Engine;
 use golem::engine::react::{ReactConfig, ReactEngine};
@@ -206,6 +206,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let mut engine = ReactEngine::new(thinker, tools, memory, config);
+    let commands = CommandRegistry::new();
 
     // Single task mode
     if let Some(task) = cli.run {
@@ -262,7 +263,7 @@ async fn main() -> anyhow::Result<()> {
             tools: &tool_names,
             usage: engine.session_usage(),
         };
-        match handle_command(task, &session_info).await {
+        match commands.dispatch(task, &session_info).await {
             CommandResult::Handled => continue,
             CommandResult::AuthChanged(new_status) => {
                 auth_status = new_status;
