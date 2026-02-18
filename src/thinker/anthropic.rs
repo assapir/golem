@@ -8,7 +8,7 @@ use crate::memory::MemoryEntry;
 use crate::prompts::build_react_system_prompt;
 use crate::tools::Outcome;
 
-use super::{Context, Step, Thinker, ToolCall};
+use super::{Context, Step, StepResult, Thinker, TokenUsage, ToolCall};
 
 const API_URL: &str = "https://api.anthropic.com/v1/messages";
 const API_VERSION: &str = "2023-06-01";
@@ -171,7 +171,7 @@ impl AnthropicThinker {
 
 #[async_trait]
 impl Thinker for AnthropicThinker {
-    async fn next_step(&self, context: &Context) -> Result<Step> {
+    async fn next_step(&self, context: &Context) -> Result<StepResult> {
         let api_key = self
             .auth
             .get_api_key("anthropic", "ANTHROPIC_API_KEY")
@@ -243,15 +243,13 @@ impl Thinker for AnthropicThinker {
             bail!("Anthropic API returned empty response");
         }
 
-        // Log token usage
-        if let Some(usage) = api_resp.usage {
-            eprintln!(
-                "  [tokens] input: {}, output: {}",
-                usage.input_tokens, usage.output_tokens
-            );
-        }
+        let usage = api_resp.usage.map(|u| TokenUsage {
+            input_tokens: u.input_tokens,
+            output_tokens: u.output_tokens,
+        });
 
-        Self::parse_response(&text)
+        let step = Self::parse_response(&text)?;
+        Ok(StepResult { step, usage })
     }
 }
 

@@ -6,7 +6,7 @@ use tokio::sync::RwLock;
 
 use super::Engine;
 use crate::memory::{Memory, MemoryEntry};
-use crate::thinker::{Context, Step, Thinker};
+use crate::thinker::{Context, Step, Thinker, TokenUsage};
 use crate::tools::{Outcome, ToolRegistry, ToolResult};
 
 pub struct ReactConfig {
@@ -29,6 +29,7 @@ pub struct ReactEngine {
     tools: Arc<ToolRegistry>,
     memory: Box<dyn Memory>,
     config: ReactConfig,
+    session_usage: TokenUsage,
 }
 
 impl ReactEngine {
@@ -43,6 +44,7 @@ impl ReactEngine {
             tools,
             memory,
             config,
+            session_usage: TokenUsage::default(),
         }
     }
 
@@ -54,6 +56,11 @@ impl ReactEngine {
     /// Access memory history (useful for tests and inspection).
     pub async fn history(&self) -> Result<Vec<MemoryEntry>> {
         self.memory.history().await
+    }
+
+    /// Cumulative token usage across all tasks in this session.
+    pub fn session_usage(&self) -> TokenUsage {
+        self.session_usage
     }
 }
 
@@ -76,12 +83,16 @@ impl Engine for ReactEngine {
                 available_tools: self.tools.descriptions().await,
             };
 
-            let step = {
+            let step_result = {
                 let thinker = self.thinker.read().await;
                 thinker.next_step(&context).await?
             };
 
-            match step {
+            if let Some(usage) = step_result.usage {
+                self.session_usage.add(usage);
+            }
+
+            match step_result.step {
                 Step::Act { thought, calls } => {
                     println!("\n[iteration {}] Thought: {}", iteration + 1, thought);
                     println!(

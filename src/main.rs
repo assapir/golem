@@ -13,6 +13,7 @@ use golem::engine::Engine;
 use golem::engine::react::{ReactConfig, ReactEngine};
 use golem::memory::sqlite::SqliteMemory;
 use golem::thinker::Thinker;
+use golem::thinker::TokenUsage;
 use golem::thinker::anthropic::AnthropicThinker;
 use golem::thinker::human::HumanThinker;
 use golem::tools::ToolRegistry;
@@ -104,37 +105,98 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    println!(
-        "golem v{} — a clay body, animated by words\n",
-        env!("CARGO_PKG_VERSION")
-    );
-
     // Wire up the thinker based on provider + model
-    let thinker: Box<dyn Thinker> = match cli.provider {
+    let (thinker, provider_name, model_name, auth_status): (
+        Box<dyn Thinker>,
+        &str,
+        String,
+        String,
+    ) = match cli.provider {
         Provider::Human => {
             if cli.model.is_some() {
                 eprintln!("warning: --model is ignored for human provider");
             }
-            Box::new(HumanThinker)
+            (
+                Box::new(HumanThinker),
+                "human",
+                "—".to_string(),
+                "N/A".to_string(),
+            )
         }
         Provider::Anthropic => {
             let auth = AuthStorage::new()?;
-            Box::new(AnthropicThinker::new(cli.model, auth)?)
+            let auth_status = match auth.get("anthropic")? {
+                Some(Credential::OAuth(_)) => "OAuth ✓".to_string(),
+                Some(Credential::ApiKey { .. }) => "API key ✓".to_string(),
+                None => {
+                    if std::env::var("ANTHROPIC_API_KEY")
+                        .map(|k| !k.is_empty())
+                        .unwrap_or(false)
+                    {
+                        "API key (env) ✓".to_string()
+                    } else {
+                        "not authenticated".to_string()
+                    }
+                }
+            };
+            let model = cli
+                .model
+                .clone()
+                .unwrap_or_else(|| "claude-sonnet-4-20250514".to_string());
+            let thinker = Box::new(AnthropicThinker::new(cli.model, auth)?);
+            (thinker, "anthropic", model, auth_status)
         }
     };
 
+    let shell_mode = if cli.allow_write {
+        ShellMode::ReadWrite
+    } else {
+        ShellMode::ReadOnly
+    };
+    let working_dir = cli
+        .work_dir
+        .unwrap_or_else(|| std::env::temp_dir().join("golem-sandbox"));
+
     let shell_config = ShellConfig {
-        mode: if cli.allow_write {
-            ShellMode::ReadWrite
-        } else {
-            ShellMode::ReadOnly
-        },
-        working_dir: cli
-            .work_dir
-            .unwrap_or_else(|| std::env::temp_dir().join("golem-sandbox")),
+        mode: shell_mode,
+        working_dir: working_dir.clone(),
         require_confirmation: !cli.no_confirm,
         ..ShellConfig::default()
     };
+
+    let memory_label = if cli.db == ":memory:" {
+        "ephemeral".to_string()
+    } else {
+        cli.db.clone()
+    };
+
+    // Startup banner
+    println!(
+        r#"
+   ╔═══════════════════════════════════════╗
+   ║              G O L E M                ║
+   ║     a clay body, animated by words    ║
+   ╚═══════════════════════════════════════╝
+
+   version   {}
+   provider  {} ({})
+   auth      {}
+   shell     {}
+   workdir   {}
+   memory    {}
+"#,
+        env!("CARGO_PKG_VERSION"),
+        provider_name,
+        model_name,
+        auth_status,
+        if shell_mode == ShellMode::ReadWrite {
+            "read-write"
+        } else {
+            "read-only"
+        },
+        working_dir.display(),
+        memory_label,
+    );
 
     let tools = Arc::new(ToolRegistry::new());
     tools.register(Arc::new(ShellTool::new(shell_config))).await;
@@ -154,6 +216,7 @@ async fn main() -> anyhow::Result<()> {
             Ok(answer) => println!("\n=> {}", answer),
             Err(e) => eprintln!("\nerror: {}", e),
         }
+        print_session_summary(engine.session_usage());
         return Ok(());
     }
 
@@ -210,7 +273,7 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    println!("goodbye.");
+    print_session_summary(engine.session_usage());
     Ok(())
 }
 
@@ -259,4 +322,29 @@ fn handle_logout(provider: &LoginProvider) -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+fn print_session_summary(usage: TokenUsage) {
+    if usage.total() > 0 {
+        println!(
+            "session: {:>6} input + {:>6} output = {:>6} tokens",
+            format_tokens(usage.input_tokens),
+            format_tokens(usage.output_tokens),
+            format_tokens(usage.total()),
+        );
+    }
+    println!("goodbye.");
+}
+
+/// Format token count with comma separators (e.g. 1,234).
+fn format_tokens(n: u64) -> String {
+    let s = n.to_string();
+    let mut result = String::with_capacity(s.len() + s.len() / 3);
+    for (i, c) in s.chars().enumerate() {
+        if i > 0 && (s.len() - i).is_multiple_of(3) {
+            result.push(',');
+        }
+        result.push(c);
+    }
+    result
 }

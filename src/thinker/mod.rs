@@ -27,6 +27,32 @@ pub enum Step {
     Finish { thought: String, answer: String },
 }
 
+/// Token usage from a single LLM call.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TokenUsage {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+}
+
+impl TokenUsage {
+    /// Accumulate another usage into this one.
+    pub fn add(&mut self, other: TokenUsage) {
+        self.input_tokens += other.input_tokens;
+        self.output_tokens += other.output_tokens;
+    }
+
+    /// Total tokens (input + output).
+    pub fn total(&self) -> u64 {
+        self.input_tokens + self.output_tokens
+    }
+}
+
+/// The result of a single thinker step: the step itself + optional token usage.
+pub struct StepResult {
+    pub step: Step,
+    pub usage: Option<TokenUsage>,
+}
+
 /// The conversation context fed to the thinker each iteration.
 pub struct Context {
     pub task: String,
@@ -44,5 +70,5 @@ pub struct ToolDescription {
 /// The borrowed brain. Could be a human, an LLM, or a test script.
 #[async_trait]
 pub trait Thinker: Send + Sync {
-    async fn next_step(&self, context: &Context) -> Result<Step>;
+    async fn next_step(&self, context: &Context) -> Result<StepResult>;
 }

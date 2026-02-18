@@ -94,7 +94,7 @@ main.rs → Box<dyn Engine>
 | Trait | Purpose | Implementations |
 |-------|---------|-----------------|
 | `Engine` | Outermost boundary, `fn run(task) -> answer` | `ReactEngine` |
-| `Thinker` | Produces next `Step` given context | `HumanThinker`, `AnthropicThinker`, `MockThinker` |
+| `Thinker` | Produces next `StepResult` given context | `HumanThinker`, `AnthropicThinker`, `MockThinker` |
 | `Tool` | Executes an action, returns string | `ShellTool` |
 | `Memory` | Stores and retrieves `MemoryEntry` | `SqliteMemory` |
 
@@ -177,6 +177,7 @@ When adding a new provider, use `build_react_system_prompt(&context.available_to
 
 - **Trait objects over generics** — runtime swappability (`set_thinker()`, heterogeneous `ToolRegistry`) requires dynamic dispatch. Vtable cost is nanoseconds vs seconds of LLM latency.
 - **Keep `async_trait`** — `async_fn_in_dyn_trait` is unstable even on nightly. Tracking: rust-lang/rust#133119.
+- **`Thinker::next_step` returns `StepResult`** — wraps `Step` + `Option<TokenUsage>`. Non-LLM thinkers return `None`. The engine accumulates usage.
 - **`Step::Act` always has `Vec<ToolCall>`** — a single call is `vec![one]`, no separate parallel variant.
 - **`ToolResult` contains `Outcome::Success` or `Outcome::Error`** — errors are information, not failures. The thinker decides what to do.
 - **The ReAct loop only enforces hard limits** — max iterations and tool timeout. All intelligence is in the thinker.
@@ -244,6 +245,40 @@ cd aur && makepkg -sf
 # Update PKGBUILD manually
 ./aur/update-pkgbuild.sh 0.2.0
 ```
+
+## Startup banner
+
+On launch (both REPL and single-task mode), golem prints an informative banner:
+
+```
+   ╔═══════════════════════════════════════╗
+   ║              G O L E M                ║
+   ║     a clay body, animated by words    ║
+   ╚═══════════════════════════════════════╝
+
+   version   0.8.0
+   provider  anthropic (claude-sonnet-4-20250514)
+   auth      OAuth ✓
+   shell     read-only
+   workdir   /tmp/golem-sandbox
+   memory    golem.db
+```
+
+The banner shows current provider, model, auth status, shell mode, working directory, and memory backend at a glance.
+
+## Token tracking
+
+Token usage is tracked cumulatively across the entire session:
+
+- Each `Thinker::next_step()` returns a `StepResult` containing an optional `TokenUsage` (input + output tokens).
+- `ReactEngine` accumulates usage across all iterations and tasks via `session_usage()`.
+- On exit (or after single-task mode), a session summary is printed:
+  ```
+  session:    323 input +     45 output =    368 tokens
+  goodbye.
+  ```
+- Non-LLM thinkers (human, mock) return `None` for usage — no summary line printed when total is zero.
+- Per-call token logging is removed; only the session total is shown.
 
 ## REPL signal handling
 
