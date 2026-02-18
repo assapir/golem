@@ -245,6 +245,18 @@ cd aur && makepkg -sf
 ./aur/update-pkgbuild.sh 0.2.0
 ```
 
+## REPL signal handling
+
+The REPL uses async stdin (`tokio::io::BufReader` + `AsyncBufReadExt::lines()`) so that signal handling works at every point:
+
+| Input | At the prompt | During task execution |
+|-------|--------------|----------------------|
+| **Ctrl+C** | Exits REPL with `goodbye.` | Cancels the running task, returns to prompt |
+| **Ctrl+D** | Exits REPL with `goodbye.` | N/A |
+| **`quit`/`exit`** | Exits REPL with `goodbye.` | N/A |
+
+Both the prompt read and the engine run are wrapped in `tokio::select!` against `tokio::signal::ctrl_c()`. Synchronous stdin would block the tokio runtime and prevent signal interception.
+
 ## Security model
 
 The shell tool is locked down by default:

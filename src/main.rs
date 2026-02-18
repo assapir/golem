@@ -5,6 +5,7 @@ use std::time::Duration;
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueEnum};
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 use golem::auth::oauth;
 use golem::auth::storage::{AuthStorage, Credential};
@@ -156,14 +157,37 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    // REPL
+    // REPL — async stdin so Ctrl+C is caught at the prompt too
+    let stdin = BufReader::new(tokio::io::stdin());
+    let mut lines = stdin.lines();
+
     loop {
         print!("\ngolem> ");
         io::stdout().flush()?;
 
-        let mut task = String::new();
-        io::stdin().read_line(&mut task)?;
-        let task = task.trim();
+        // Read next line, interruptible by Ctrl+C
+        let line = tokio::select! {
+            result = lines.next_line() => {
+                match result {
+                    Ok(Some(line)) => line,
+                    Ok(None) => {
+                        // Ctrl+D (EOF)
+                        println!();
+                        break;
+                    }
+                    Err(e) => {
+                        eprintln!("input error: {}", e);
+                        break;
+                    }
+                }
+            }
+            _ = tokio::signal::ctrl_c() => {
+                println!();
+                break;
+            }
+        };
+
+        let task = line.trim();
 
         if task.is_empty() {
             continue;
@@ -172,12 +196,21 @@ async fn main() -> anyhow::Result<()> {
             break;
         }
 
-        match engine.run(task).await {
-            Ok(answer) => println!("\n=> {}", answer),
-            Err(e) => eprintln!("\nerror: {}", e),
+        // Ctrl+C during task execution cancels the task, not the REPL
+        tokio::select! {
+            result = engine.run(task) => {
+                match result {
+                    Ok(answer) => println!("\n=> {}", answer),
+                    Err(e) => eprintln!("\nerror: {}", e),
+                }
+            }
+            _ = tokio::signal::ctrl_c() => {
+                println!("\n\ninterrupted");
+            }
         }
     }
 
+    println!("goodbye.");
     Ok(())
 }
 
