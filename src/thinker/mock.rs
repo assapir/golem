@@ -23,10 +23,9 @@ impl MockThinker {
 impl Thinker for MockThinker {
     async fn next_step(&self, _context: &Context) -> Result<StepResult> {
         let i = self.index.fetch_add(1, Ordering::SeqCst);
-        let result = self
-            .steps
-            .get(i)
-            .ok_or_else(|| anyhow::anyhow!("MockThinker: no more steps (called {} times)", i + 1))?;
+        let result = self.steps.get(i).ok_or_else(|| {
+            anyhow::anyhow!("MockThinker: no more steps (called {} times)", i + 1)
+        })?;
         // Clone the step, copy the usage
         Ok(StepResult {
             step: result.step.clone(),

@@ -311,5 +311,3 @@ fn handle_logout(provider: &LoginProvider) -> anyhow::Result<()> {
     }
     Ok(())
 }
-
-
