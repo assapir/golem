@@ -23,10 +23,7 @@ pub enum Step {
         calls: Vec<ToolCall>,
     },
     /// Task is complete.
-    Finish {
-        thought: String,
-        answer: String,
-    },
+    Finish { thought: String, answer: String },
 }
 
 /// The conversation context fed to the thinker each iteration.

@@ -59,9 +59,7 @@ impl Thinker for HumanThinker {
             .split(';')
             .map(|call| {
                 let call = call.trim();
-                let (tool, args_str) = call
-                    .split_once(':')
-                    .unwrap_or((call, ""));
+                let (tool, args_str) = call.split_once(':').unwrap_or((call, ""));
 
                 let mut args = HashMap::new();
                 if !args_str.is_empty() {

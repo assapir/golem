@@ -11,13 +11,13 @@ use std::path::PathBuf;
 
 use clap::{Parser, ValueEnum};
 
-use engine::react::{ReactConfig, ReactEngine};
 use engine::Engine;
+use engine::react::{ReactConfig, ReactEngine};
 use memory::sqlite::SqliteMemory;
-use thinker::human::HumanThinker;
 use thinker::Thinker;
-use tools::shell::{ShellConfig, ShellMode, ShellTool};
+use thinker::human::HumanThinker;
 use tools::ToolRegistry;
+use tools::shell::{ShellConfig, ShellMode, ShellTool};
 
 #[derive(Debug, Clone, ValueEnum)]
 enum Provider {
@@ -69,7 +69,10 @@ struct Cli {
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    println!("golem v{} — a clay body, animated by words\n", env!("CARGO_PKG_VERSION"));
+    println!(
+        "golem v{} — a clay body, animated by words\n",
+        env!("CARGO_PKG_VERSION")
+    );
 
     // Wire up the thinker based on provider + model
     let thinker: Box<dyn Thinker> = match cli.provider {
@@ -87,7 +90,9 @@ async fn main() -> anyhow::Result<()> {
         } else {
             ShellMode::ReadOnly
         },
-        working_dir: cli.work_dir.unwrap_or_else(|| std::env::temp_dir().join("golem-sandbox")),
+        working_dir: cli
+            .work_dir
+            .unwrap_or_else(|| std::env::temp_dir().join("golem-sandbox")),
         require_confirmation: !cli.no_confirm,
         ..ShellConfig::default()
     };
