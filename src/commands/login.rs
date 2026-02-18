@@ -16,8 +16,9 @@ impl Command for LoginCommand {
         "log in to the current provider"
     }
 
-    async fn execute(&self, _info: &SessionInfo<'_>) -> CommandResult {
-        println!("Logging in to Anthropic...\n");
+    async fn execute(&self, info: &SessionInfo<'_>) -> CommandResult {
+        let provider = info.provider;
+        println!("Logging in to {provider}...\n");
 
         let (url, verifier) = oauth::build_authorize_url();
         let _ = open::that(&url);
@@ -52,11 +53,11 @@ impl Command for LoginCommand {
                         return CommandResult::Handled;
                     }
                 };
-                if let Err(e) = storage.set("anthropic", Credential::OAuth(credentials)) {
+                if let Err(e) = storage.set(provider, Credential::OAuth(credentials)) {
                     eprintln!("  ✗ failed to save credentials: {e}");
                     return CommandResult::Handled;
                 }
-                println!("  ✓ logged in to Anthropic");
+                println!("  ✓ logged in to {provider}");
                 CommandResult::AuthChanged("OAuth ✓".to_string())
             }
             Err(e) => {

@@ -15,7 +15,8 @@ impl Command for LogoutCommand {
         "log out from the current provider"
     }
 
-    async fn execute(&self, _info: &SessionInfo<'_>) -> CommandResult {
+    async fn execute(&self, info: &SessionInfo<'_>) -> CommandResult {
+        let provider = info.provider;
         let storage = match AuthStorage::new() {
             Ok(s) => s,
             Err(e) => {
@@ -23,11 +24,11 @@ impl Command for LogoutCommand {
                 return CommandResult::Handled;
             }
         };
-        if let Err(e) = storage.remove("anthropic") {
+        if let Err(e) = storage.remove(provider) {
             eprintln!("  ✗ failed to remove credentials: {e}");
             return CommandResult::Handled;
         }
-        println!("  ✓ logged out from Anthropic");
+        println!("  ✓ logged out from {provider}");
         CommandResult::AuthChanged("not authenticated".to_string())
     }
 }
