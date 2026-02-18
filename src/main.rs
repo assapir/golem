@@ -188,14 +188,11 @@ async fn handle_login(provider: &LoginProvider) -> anyhow::Result<()> {
 
             let (url, verifier) = oauth::build_authorize_url();
 
-            println!("Opening browser for authentication...");
-            println!("If the browser doesn't open, visit this URL:\n");
-            println!("  {}\n", url);
+            // Try to open browser, silently ignore failures (e.g. headless/SSH)
+            let _ = open::that(&url);
 
-            if let Err(e) = open::that(&url) {
-                eprintln!("Could not open browser: {}", e);
-                println!("Please open the URL above manually.");
-            }
+            println!("Open this URL to authenticate:\n");
+            println!("  {}\n", url);
 
             print!("Paste the authorization code: ");
             io::stdout().flush()?;
