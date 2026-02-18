@@ -1,8 +1,8 @@
 //! Project-wide constants.
 
-pub const AUTHOR: &str = "Assaf Sapir";
-pub const HOMEPAGE: &str = "sapir.io";
-pub const REPO: &str = "github.com/assapir/golem";
+pub const AUTHOR: &str = env!("CARGO_PKG_AUTHORS");
+pub const HOMEPAGE: &str = env!("CARGO_PKG_HOMEPAGE");
+pub const REPO: &str = env!("CARGO_PKG_REPOSITORY");
 
 /// Default Anthropic model when none is specified.
 pub const DEFAULT_MODEL: &str = "claude-sonnet-4-20250514";
@@ -33,8 +33,10 @@ mod tests {
     }
 
     #[test]
-    fn repo_contains_github() {
-        assert!(REPO.contains("github.com"));
+    fn consts_from_cargo_toml() {
+        assert!(AUTHOR.contains("Assaf Sapir"));
+        assert!(HOMEPAGE.contains("sapir.io"));
+        assert!(REPO.contains("github.com/assapir/golem"));
     }
 
     #[test]

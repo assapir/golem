@@ -180,7 +180,8 @@ async fn main() -> anyhow::Result<()> {
    ╚═══════════════════════════════════════╝
 
    version   {}
-   by        {} <{}>
+   by        {}
+   home      {}
    repo      {}
    provider  {} ({})
    auth      {}

@@ -2,6 +2,9 @@
 name = "golem"
 version = "0.8.0"
 edition = "2024"
+authors = ["Assaf Sapir <assaf@sapir.io>"]
+homepage = "https://sapir.io"
+repository = "https://github.com/assapir/golem"
 
 [dependencies]
 anyhow = "1.0.101"
