@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use golem::engine::react::{ReactConfig, ReactEngine};
 use golem::engine::Engine;
+use golem::engine::react::{ReactConfig, ReactEngine};
 use golem::memory::sqlite::SqliteMemory;
 use golem::thinker::mock::MockThinker;
-use golem::thinker::{Step, ToolCall, Thinker};
-use golem::tools::shell::{ShellConfig, ShellMode, ShellTool};
+use golem::thinker::{Step, Thinker, ToolCall};
 use golem::tools::ToolRegistry;
+use golem::tools::shell::{ShellConfig, ShellMode, ShellTool};
 
 async fn build_engine(steps: Vec<Step>) -> ReactEngine {
     let thinker = Box::new(MockThinker::new(steps));
@@ -127,24 +127,20 @@ async fn max_iterations_enforced() {
 #[tokio::test]
 async fn swap_thinker_at_runtime() {
     // Start with a thinker that does one action
-    let mut engine = build_engine(vec![
-        Step::Finish {
-            thought: "first brain".to_string(),
-            answer: "answer from brain 1".to_string(),
-        },
-    ])
+    let mut engine = build_engine(vec![Step::Finish {
+        thought: "first brain".to_string(),
+        answer: "answer from brain 1".to_string(),
+    }])
     .await;
 
     let result = engine.run("task 1").await.unwrap();
     assert_eq!(result, "answer from brain 1");
 
     // Swap to a different thinker
-    let new_thinker: Box<dyn Thinker> = Box::new(MockThinker::new(vec![
-        Step::Finish {
-            thought: "second brain".to_string(),
-            answer: "answer from brain 2".to_string(),
-        },
-    ]));
+    let new_thinker: Box<dyn Thinker> = Box::new(MockThinker::new(vec![Step::Finish {
+        thought: "second brain".to_string(),
+        answer: "answer from brain 2".to_string(),
+    }]));
     engine.set_thinker(new_thinker).await;
 
     let result = engine.run("task 2").await.unwrap();
@@ -174,5 +170,7 @@ async fn memory_cleared_between_runs() {
     // Memory should only contain entries from the second run
     let history = engine.history().await.unwrap();
     assert_eq!(history.len(), 2); // Task + Answer
-    assert!(matches!(&history[0], golem::memory::MemoryEntry::Task { content } if content == "second task"));
+    assert!(
+        matches!(&history[0], golem::memory::MemoryEntry::Task { content } if content == "second task")
+    );
 }

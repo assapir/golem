@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::Duration;
@@ -83,11 +83,7 @@ impl Engine for ReactEngine {
 
             match step {
                 Step::Act { thought, calls } => {
-                    println!(
-                        "\n[iteration {}] Thought: {}",
-                        iteration + 1,
-                        thought
-                    );
+                    println!("\n[iteration {}] Thought: {}", iteration + 1, thought);
                     println!(
                         "[iteration {}] Executing {} tool call(s)...",
                         iteration + 1,
