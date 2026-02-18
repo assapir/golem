@@ -46,7 +46,7 @@ impl Command for LoginCommand {
         println!("\nExchanging code for tokens...");
         match oauth::exchange_code(code, &verifier).await {
             Ok(credentials) => {
-                let storage = match AuthStorage::new() {
+                let storage = match AuthStorage::open(info.db_path) {
                     Ok(s) => s,
                     Err(e) => {
                         eprintln!("  ✗ failed to open auth storage: {e}");
@@ -65,5 +65,17 @@ impl Command for LoginCommand {
                 CommandResult::Handled
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn metadata() {
+        assert_eq!(LoginCommand.name(), "/login");
+        assert!(LoginCommand.aliases().is_empty());
+        assert!(!LoginCommand.description().is_empty());
     }
 }

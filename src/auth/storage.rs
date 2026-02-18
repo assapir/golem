@@ -1,12 +1,11 @@
-use std::collections::HashMap;
-use std::fs;
-use std::path::PathBuf;
+use std::sync::Mutex;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
+use rusqlite::Connection;
 
 use super::oauth::OAuthCredentials;
 
-/// Credential entry in auth.json.
+/// Credential types stored per provider.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type")]
 pub enum Credential {
@@ -16,79 +15,72 @@ pub enum Credential {
     ApiKey { key: String },
 }
 
-/// Manages credential storage in `~/.golem/auth.json`.
+/// Manages credential storage in SQLite.
+///
+/// Shares a database with memory and config — pass the same connection
+/// or path used for `SqliteMemory`.
 pub struct AuthStorage {
-    path: PathBuf,
+    conn: Mutex<Connection>,
 }
 
 impl AuthStorage {
-    pub fn new() -> Result<Self> {
-        let dir = dirs::home_dir()
-            .context("cannot determine home directory")?
-            .join(".golem");
-        fs::create_dir_all(&dir)?;
+    /// Open or create a credentials table in the given database path.
+    /// Use `":memory:"` for tests.
+    pub fn open(path: &str) -> Result<Self> {
+        let conn = Connection::open(path)?;
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS credentials (
+                provider TEXT PRIMARY KEY,
+                data     TEXT NOT NULL
+            )",
+        )?;
         Ok(Self {
-            path: dir.join("auth.json"),
+            conn: Mutex::new(conn),
         })
-    }
-
-    /// Create with a custom path (for testing).
-    pub fn with_path(path: PathBuf) -> Self {
-        Self { path }
-    }
-
-    fn load(&self) -> Result<HashMap<String, Credential>> {
-        if !self.path.exists() {
-            return Ok(HashMap::new());
-        }
-        let data = fs::read_to_string(&self.path)?;
-        let creds: HashMap<String, Credential> = serde_json::from_str(&data)?;
-        Ok(creds)
-    }
-
-    fn save(&self, creds: &HashMap<String, Credential>) -> Result<()> {
-        let data = serde_json::to_string_pretty(creds)?;
-        fs::write(&self.path, &data)?;
-
-        // Set file permissions to 0600 (owner read/write only) on Unix
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&self.path, fs::Permissions::from_mode(0o600))?;
-        }
-
-        Ok(())
     }
 
     /// Get credential for a provider.
     pub fn get(&self, provider: &str) -> Result<Option<Credential>> {
-        let creds = self.load()?;
-        Ok(creds.get(provider).cloned())
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT data FROM credentials WHERE provider = ?1")?;
+        let mut rows = stmt.query([provider])?;
+        match rows.next()? {
+            Some(row) => {
+                let json: String = row.get(0)?;
+                let cred: Credential = serde_json::from_str(&json)?;
+                Ok(Some(cred))
+            }
+            None => Ok(None),
+        }
     }
 
-    /// Store credential for a provider.
+    /// Store credential for a provider (upsert).
     pub fn set(&self, provider: &str, credential: Credential) -> Result<()> {
-        let mut creds = self.load()?;
-        creds.insert(provider.to_string(), credential);
-        self.save(&creds)
+        let json = serde_json::to_string(&credential)?;
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO credentials (provider, data) VALUES (?1, ?2)
+             ON CONFLICT(provider) DO UPDATE SET data = excluded.data",
+            [provider, &json],
+        )?;
+        Ok(())
     }
 
     /// Remove credential for a provider.
     pub fn remove(&self, provider: &str) -> Result<()> {
-        let mut creds = self.load()?;
-        creds.remove(provider);
-        self.save(&creds)
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM credentials WHERE provider = ?1", [provider])?;
+        Ok(())
     }
 
     /// Get the API key for a provider, handling OAuth token refresh.
-    /// Priority: auth.json OAuth → auth.json API key → environment variable.
+    /// Priority: stored OAuth → stored API key → environment variable.
     pub async fn get_api_key(&self, provider: &str, env_var: &str) -> Result<Option<String>> {
         if let Some(cred) = self.get(provider)? {
             match cred {
                 Credential::ApiKey { key } => return Ok(Some(key)),
                 Credential::OAuth(mut oauth) => {
                     if oauth.is_expired() {
-                        // Refresh the token
                         let refreshed = super::oauth::refresh_token(&oauth.refresh).await?;
                         oauth = refreshed.clone();
                         self.set(provider, Credential::OAuth(refreshed))?;

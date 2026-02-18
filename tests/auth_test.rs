@@ -1,28 +1,23 @@
-use std::fs;
-
 use golem::auth::oauth::{OAuthCredentials, build_authorize_url, verify_pkce};
 use golem::auth::storage::{AuthStorage, Credential};
 
-/// Helper: create a temp dir with an AuthStorage pointing at it.
-fn temp_storage() -> (AuthStorage, tempfile::TempDir) {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("auth.json");
-    let storage = AuthStorage::with_path(path);
-    (storage, dir)
+/// Helper: create an in-memory AuthStorage.
+fn mem_storage() -> AuthStorage {
+    AuthStorage::open(":memory:").unwrap()
 }
 
 // ── Storage CRUD ──────────────────────────────────────────────────
 
 #[test]
-fn get_returns_none_when_no_file() {
-    let (storage, _dir) = temp_storage();
+fn get_returns_none_when_empty() {
+    let storage = mem_storage();
     let result = storage.get("anthropic").unwrap();
     assert!(result.is_none());
 }
 
 #[test]
 fn set_and_get_api_key() {
-    let (storage, _dir) = temp_storage();
+    let storage = mem_storage();
     storage
         .set(
             "anthropic",
@@ -41,7 +36,7 @@ fn set_and_get_api_key() {
 
 #[test]
 fn set_and_get_oauth() {
-    let (storage, _dir) = temp_storage();
+    let storage = mem_storage();
     let oauth = OAuthCredentials {
         access: "access-token".to_string(),
         refresh: "refresh-token".to_string(),
@@ -62,7 +57,7 @@ fn set_and_get_oauth() {
 
 #[test]
 fn remove_deletes_credential() {
-    let (storage, _dir) = temp_storage();
+    let storage = mem_storage();
     storage
         .set(
             "anthropic",
@@ -78,14 +73,13 @@ fn remove_deletes_credential() {
 
 #[test]
 fn remove_nonexistent_is_ok() {
-    let (storage, _dir) = temp_storage();
-    // Should not error when removing a key that doesn't exist
+    let storage = mem_storage();
     storage.remove("nonexistent").unwrap();
 }
 
 #[test]
 fn multiple_providers_independent() {
-    let (storage, _dir) = temp_storage();
+    let storage = mem_storage();
     storage
         .set(
             "anthropic",
@@ -117,7 +111,7 @@ fn multiple_providers_independent() {
 
 #[test]
 fn set_overwrites_existing() {
-    let (storage, _dir) = temp_storage();
+    let storage = mem_storage();
     storage
         .set(
             "anthropic",
@@ -143,7 +137,7 @@ fn set_overwrites_existing() {
 
 #[test]
 fn remove_one_preserves_others() {
-    let (storage, _dir) = temp_storage();
+    let storage = mem_storage();
     storage
         .set(
             "anthropic",
@@ -167,75 +161,11 @@ fn remove_one_preserves_others() {
     assert!(storage.get("openai").unwrap().is_some());
 }
 
-// ── File permissions ──────────────────────────────────────────────
-
-#[cfg(unix)]
-#[test]
-fn auth_file_has_0600_permissions() {
-    use std::os::unix::fs::PermissionsExt;
-
-    let (storage, dir) = temp_storage();
-    storage
-        .set(
-            "test",
-            Credential::ApiKey {
-                key: "secret".to_string(),
-            },
-        )
-        .unwrap();
-
-    let path = dir.path().join("auth.json");
-    let perms = fs::metadata(&path).unwrap().permissions();
-    assert_eq!(perms.mode() & 0o777, 0o600);
-}
-
-// ── JSON format ───────────────────────────────────────────────────
-
-#[test]
-fn stored_json_is_readable() {
-    let (storage, dir) = temp_storage();
-    storage
-        .set(
-            "anthropic",
-            Credential::ApiKey {
-                key: "sk-test".to_string(),
-            },
-        )
-        .unwrap();
-
-    let path = dir.path().join("auth.json");
-    let content = fs::read_to_string(path).unwrap();
-    let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
-
-    assert_eq!(parsed["anthropic"]["type"], "api_key");
-    assert_eq!(parsed["anthropic"]["key"], "sk-test");
-}
-
-#[test]
-fn oauth_stored_json_format() {
-    let (storage, dir) = temp_storage();
-    let oauth = OAuthCredentials {
-        access: "access".to_string(),
-        refresh: "refresh".to_string(),
-        expires: 12345,
-    };
-    storage.set("anthropic", Credential::OAuth(oauth)).unwrap();
-
-    let path = dir.path().join("auth.json");
-    let content = fs::read_to_string(path).unwrap();
-    let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
-
-    assert_eq!(parsed["anthropic"]["type"], "oauth");
-    assert_eq!(parsed["anthropic"]["access"], "access");
-    assert_eq!(parsed["anthropic"]["refresh"], "refresh");
-    assert_eq!(parsed["anthropic"]["expires"], 12345);
-}
-
 // ── get_api_key resolution ────────────────────────────────────────
 
 #[tokio::test]
 async fn get_api_key_from_api_key_credential() {
-    let (storage, _dir) = temp_storage();
+    let storage = mem_storage();
     storage
         .set(
             "anthropic",
@@ -254,7 +184,7 @@ async fn get_api_key_from_api_key_credential() {
 
 #[tokio::test]
 async fn get_api_key_from_oauth_non_expired() {
-    let (storage, _dir) = temp_storage();
+    let storage = mem_storage();
     let oauth = OAuthCredentials {
         access: "sk-ant-oat01-valid".to_string(),
         refresh: "refresh".to_string(),
@@ -271,8 +201,7 @@ async fn get_api_key_from_oauth_non_expired() {
 
 #[tokio::test]
 async fn get_api_key_falls_back_to_env() {
-    let (storage, _dir) = temp_storage();
-    // No credential stored, set env var
+    let storage = mem_storage();
     unsafe { std::env::set_var("GOLEM_TEST_API_KEY", "sk-from-env") };
 
     let key = storage
@@ -286,7 +215,7 @@ async fn get_api_key_falls_back_to_env() {
 
 #[tokio::test]
 async fn get_api_key_returns_none_when_nothing() {
-    let (storage, _dir) = temp_storage();
+    let storage = mem_storage();
 
     let key = storage
         .get_api_key("anthropic", "GOLEM_TEST_NONEXISTENT_VAR")
@@ -297,7 +226,7 @@ async fn get_api_key_returns_none_when_nothing() {
 
 #[tokio::test]
 async fn get_api_key_ignores_empty_env() {
-    let (storage, _dir) = temp_storage();
+    let storage = mem_storage();
     unsafe { std::env::set_var("GOLEM_TEST_EMPTY_KEY", "") };
 
     let key = storage
@@ -311,7 +240,7 @@ async fn get_api_key_ignores_empty_env() {
 
 #[tokio::test]
 async fn get_api_key_credential_takes_priority_over_env() {
-    let (storage, _dir) = temp_storage();
+    let storage = mem_storage();
     storage
         .set(
             "anthropic",
@@ -329,6 +258,38 @@ async fn get_api_key_credential_takes_priority_over_env() {
     assert_eq!(key, Some("from-file".to_string()));
 
     unsafe { std::env::remove_var("GOLEM_TEST_PRIORITY_KEY") };
+}
+
+// ── File-based storage ────────────────────────────────────────────
+
+#[test]
+fn file_based_storage_persists() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("test.db");
+    let path_str = path.to_str().unwrap();
+
+    // Write
+    {
+        let storage = AuthStorage::open(path_str).unwrap();
+        storage
+            .set(
+                "anthropic",
+                Credential::ApiKey {
+                    key: "sk-persist".to_string(),
+                },
+            )
+            .unwrap();
+    }
+
+    // Read in a new connection
+    {
+        let storage = AuthStorage::open(path_str).unwrap();
+        let cred = storage.get("anthropic").unwrap().unwrap();
+        match cred {
+            Credential::ApiKey { key } => assert_eq!(key, "sk-persist"),
+            _ => panic!("expected ApiKey"),
+        }
+    }
 }
 
 // ── OAuth URL ─────────────────────────────────────────────────────

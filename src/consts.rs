@@ -1,11 +1,22 @@
 //! Project-wide constants.
 
+use std::path::PathBuf;
+
 pub const AUTHOR: &str = env!("CARGO_PKG_AUTHORS");
 pub const HOMEPAGE: &str = env!("CARGO_PKG_HOMEPAGE");
 pub const REPO: &str = env!("CARGO_PKG_REPOSITORY");
 
 /// Default Anthropic model when none is specified.
 pub const DEFAULT_MODEL: &str = "claude-sonnet-4-20250514";
+
+/// Default database path: `~/.golem/golem.db`.
+/// Single DB for memory, credentials, and config.
+pub fn default_db_path() -> PathBuf {
+    dirs::home_dir()
+        .expect("cannot determine home directory")
+        .join(".golem")
+        .join("golem.db")
+}
 
 /// Format a number with comma separators (e.g. 1,234,567).
 pub fn format_number(n: u64) -> String {

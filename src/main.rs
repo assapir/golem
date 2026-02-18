@@ -11,7 +11,7 @@ use golem::auth::oauth;
 use golem::auth::storage::{AuthStorage, Credential};
 use golem::banner::{BannerInfo, print_banner, print_session_summary};
 use golem::commands::{CommandRegistry, CommandResult, SessionInfo};
-use golem::consts::DEFAULT_MODEL;
+use golem::consts::{DEFAULT_MODEL, default_db_path};
 use golem::engine::Engine;
 use golem::engine::react::{ReactConfig, ReactEngine};
 use golem::memory::sqlite::SqliteMemory;
@@ -41,9 +41,9 @@ struct Cli {
     #[arg(long)]
     model: Option<String>,
 
-    /// SQLite database path for memory persistence (use :memory: for ephemeral)
-    #[arg(short, long, default_value = "golem.db")]
-    db: String,
+    /// SQLite database path (use :memory: for ephemeral)
+    #[arg(short, long)]
+    db: Option<String>,
 
     /// Maximum ReAct loop iterations before giving up
     #[arg(short, long, default_value_t = 20)]
@@ -107,6 +107,19 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    // Resolve database path — single DB for memory, credentials, and config
+    let db_path = cli
+        .db
+        .clone()
+        .unwrap_or_else(|| default_db_path().to_string_lossy().to_string());
+
+    // Ensure parent directory exists for file-based DBs
+    if db_path != ":memory:"
+        && let Some(parent) = std::path::Path::new(&db_path).parent()
+    {
+        std::fs::create_dir_all(parent)?;
+    }
+
     // Wire up the thinker based on provider + model
     let (thinker, provider_name, model_name, mut auth_status): (
         Box<dyn Thinker>,
@@ -126,7 +139,7 @@ async fn main() -> anyhow::Result<()> {
             )
         }
         Provider::Anthropic => {
-            let auth = AuthStorage::new()?;
+            let auth = AuthStorage::open(&db_path)?;
             let auth_status = match auth.get("anthropic")? {
                 Some(Credential::OAuth(_)) => "OAuth ✓".to_string(),
                 Some(Credential::ApiKey { .. }) => "API key ✓".to_string(),
@@ -145,7 +158,7 @@ async fn main() -> anyhow::Result<()> {
                 .model
                 .clone()
                 .unwrap_or_else(|| DEFAULT_MODEL.to_string());
-            let thinker = Box::new(AnthropicThinker::new(cli.model, auth)?);
+            let thinker = Box::new(AnthropicThinker::new(cli.model, auth));
             (thinker, "anthropic", model, auth_status)
         }
     };
@@ -166,10 +179,10 @@ async fn main() -> anyhow::Result<()> {
         ..ShellConfig::default()
     };
 
-    let memory_label = if cli.db == ":memory:" {
-        "ephemeral"
+    let memory_label = if db_path == ":memory:" {
+        "ephemeral".to_string()
     } else {
-        &cli.db
+        db_path.clone()
     };
 
     let shell_label = if shell_mode == ShellMode::ReadWrite {
@@ -184,7 +197,7 @@ async fn main() -> anyhow::Result<()> {
         auth_status: &auth_status,
         shell_mode: shell_label,
         working_dir: &working_dir,
-        memory: memory_label,
+        memory: &memory_label,
     });
 
     let tools = Arc::new(ToolRegistry::new());
@@ -198,7 +211,7 @@ async fn main() -> anyhow::Result<()> {
         .map(|t| format!("{} — {}", t.name, t.description))
         .collect();
 
-    let memory = Box::new(SqliteMemory::new(&cli.db)?);
+    let memory = Box::new(SqliteMemory::new(&db_path)?);
 
     let config = ReactConfig {
         max_iterations: cli.max_iterations,
@@ -262,6 +275,7 @@ async fn main() -> anyhow::Result<()> {
             shell_mode: shell_label,
             tools: &tool_names,
             usage: engine.session_usage(),
+            db_path: &db_path,
         };
         match commands.dispatch(task, &session_info).await {
             CommandResult::Handled => continue,
@@ -292,13 +306,18 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn handle_login(provider: &LoginProvider) -> anyhow::Result<()> {
+    let db_path = default_db_path();
+    let db_str = db_path.to_string_lossy();
+
+    if let Some(parent) = db_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
     match provider {
         LoginProvider::Anthropic => {
             println!("Logging in to Anthropic (Claude Pro/Max)...\n");
 
             let (url, verifier) = oauth::build_authorize_url();
-
-            // Try to open browser, silently ignore failures (e.g. headless/SSH)
             let _ = open::that(&url);
 
             println!("Open this URL to authenticate:\n");
@@ -317,20 +336,26 @@ async fn handle_login(provider: &LoginProvider) -> anyhow::Result<()> {
             println!("\nExchanging code for tokens...");
             let credentials = oauth::exchange_code(code, &verifier).await?;
 
-            let storage = AuthStorage::new()?;
+            let storage = AuthStorage::open(&db_str)?;
             storage.set("anthropic", Credential::OAuth(credentials))?;
 
             println!("✓ Logged in to Anthropic successfully!");
-            println!("  Credentials saved to ~/.golem/auth.json");
         }
     }
     Ok(())
 }
 
 fn handle_logout(provider: &LoginProvider) -> anyhow::Result<()> {
+    let db_path = default_db_path();
+    let db_str = db_path.to_string_lossy();
+
+    if let Some(parent) = db_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
     match provider {
         LoginProvider::Anthropic => {
-            let storage = AuthStorage::new()?;
+            let storage = AuthStorage::open(&db_str)?;
             storage.remove("anthropic")?;
             println!("✓ Logged out from Anthropic.");
         }
