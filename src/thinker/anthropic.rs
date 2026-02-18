@@ -25,13 +25,14 @@ pub struct AnthropicThinker {
 
 impl AnthropicThinker {
     pub fn new(model: Option<String>, auth: AuthStorage) -> Result<Self> {
-        let has_cred = auth.get("anthropic")?.is_some()
+        let provider = "anthropic";
+        let has_cred = auth.get(provider)?.is_some()
             || std::env::var("ANTHROPIC_API_KEY")
                 .map(|k| !k.is_empty())
                 .unwrap_or(false);
         if !has_cred {
             bail!(
-                "not authenticated for Anthropic\n\n  Run:  golem login\n  Or:   export ANTHROPIC_API_KEY=sk-ant-..."
+                "not authenticated for {provider}\n\n  Run:  golem /login\n  Or:   export ANTHROPIC_API_KEY=sk-ant-..."
             );
         }
         Ok(Self {

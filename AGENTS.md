@@ -46,7 +46,7 @@ src/
 ├── banner.rs            # startup banner + session summary
 ├── commands/            # Command trait + CommandRegistry + built-in /slash commands
 ├── consts.rs            # project-wide constants (from Cargo.toml metadata)
-├── auth/                # OAuth PKCE flow + credential storage (~/.golem/auth.json)
+├── auth/                # OAuth PKCE flow + credential storage (SQLite)
 ├── engine/              # Engine trait + ReactEngine (ReAct loop)
 ├── prompts/             # shared ReAct system prompt builder
 ├── thinker/             # Thinker trait + providers (anthropic, human, mock)

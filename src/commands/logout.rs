@@ -2,6 +2,7 @@ use async_trait::async_trait;
 
 use super::{Command, CommandResult, SessionInfo};
 use crate::auth::storage::AuthStorage;
+use crate::consts::default_db_path;
 
 pub struct LogoutCommand;
 
@@ -17,7 +18,8 @@ impl Command for LogoutCommand {
 
     async fn execute(&self, info: &SessionInfo<'_>) -> CommandResult {
         let provider = info.provider;
-        let storage = match AuthStorage::new() {
+        let db_path = default_db_path();
+        let storage = match AuthStorage::open(&db_path.to_string_lossy()) {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("  ✗ failed to open auth storage: {e}");
