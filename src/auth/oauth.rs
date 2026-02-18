@@ -158,6 +158,14 @@ struct TokenResponse {
     expires_in: u64,
 }
 
+/// Verify that a PKCE verifier and challenge are correctly related.
+/// The challenge must be the base64url-encoded SHA-256 of the verifier.
+pub fn verify_pkce(verifier: &str, challenge: &str) -> bool {
+    let hash = Sha256::digest(verifier.as_bytes());
+    let expected = URL_SAFE_NO_PAD.encode(hash);
+    expected == challenge
+}
+
 /// Minimal URL encoding for query parameters.
 fn urlencoded(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -172,4 +180,138 @@ fn urlencoded(s: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pkce_verifier_is_43_chars() {
+        // base64url of 32 bytes = 43 characters (no padding)
+        let pkce = generate_pkce();
+        assert_eq!(pkce.verifier.len(), 43);
+    }
+
+    #[test]
+    fn pkce_challenge_is_43_chars() {
+        // SHA-256 output is 32 bytes, base64url encoded = 43 chars
+        let pkce = generate_pkce();
+        assert_eq!(pkce.challenge.len(), 43);
+    }
+
+    #[test]
+    fn pkce_verifier_and_challenge_differ() {
+        let pkce = generate_pkce();
+        assert_ne!(pkce.verifier, pkce.challenge);
+    }
+
+    #[test]
+    fn pkce_challenge_matches_verifier() {
+        let pkce = generate_pkce();
+        assert!(verify_pkce(&pkce.verifier, &pkce.challenge));
+    }
+
+    #[test]
+    fn pkce_wrong_verifier_fails() {
+        let pkce = generate_pkce();
+        assert!(!verify_pkce("wrong-verifier-value-xxxxxxxxxxxxxxxxxx", &pkce.challenge));
+    }
+
+    #[test]
+    fn pkce_is_random_each_time() {
+        let a = generate_pkce();
+        let b = generate_pkce();
+        assert_ne!(a.verifier, b.verifier);
+        assert_ne!(a.challenge, b.challenge);
+    }
+
+    #[test]
+    fn authorize_url_has_required_params() {
+        let (url, verifier) = build_authorize_url();
+
+        assert!(url.starts_with("https://claude.ai/oauth/authorize?"));
+        assert!(url.contains("client_id="));
+        assert!(url.contains("response_type=code"));
+        assert!(url.contains("redirect_uri="));
+        assert!(url.contains("scope="));
+        assert!(url.contains("code_challenge="));
+        assert!(url.contains("code_challenge_method=S256"));
+        assert!(url.contains("state="));
+
+        // The state parameter should be the PKCE verifier
+        let state_param = url
+            .split('&')
+            .find(|p| p.starts_with("state="))
+            .unwrap();
+        let state_value = state_param.strip_prefix("state=").unwrap();
+        assert_eq!(state_value, verifier);
+    }
+
+    #[test]
+    fn authorize_url_verifier_is_valid_pkce() {
+        let (url, verifier) = build_authorize_url();
+
+        // Extract the challenge from the URL
+        let challenge_param = url
+            .split('&')
+            .find(|p| p.starts_with("code_challenge="))
+            .unwrap();
+        let challenge = challenge_param.strip_prefix("code_challenge=").unwrap();
+
+        assert!(verify_pkce(&verifier, challenge));
+    }
+
+    #[test]
+    fn urlencoded_preserves_alphanumeric() {
+        assert_eq!(urlencoded("hello"), "hello");
+        assert_eq!(urlencoded("ABC123"), "ABC123");
+    }
+
+    #[test]
+    fn urlencoded_encodes_spaces() {
+        assert_eq!(urlencoded("hello world"), "hello%20world");
+    }
+
+    #[test]
+    fn urlencoded_encodes_special_chars() {
+        assert_eq!(urlencoded("a=b&c"), "a%3Db%26c");
+        assert_eq!(urlencoded("foo:bar"), "foo%3Abar");
+    }
+
+    #[test]
+    fn urlencoded_preserves_unreserved() {
+        // RFC 3986 unreserved: A-Z a-z 0-9 - _ . ~
+        assert_eq!(urlencoded("a-b_c.d~e"), "a-b_c.d~e");
+    }
+
+    #[test]
+    fn credentials_not_expired_when_future() {
+        let creds = OAuthCredentials {
+            access: "token".to_string(),
+            refresh: "refresh".to_string(),
+            expires: now_ms() + 3_600_000, // 1 hour from now
+        };
+        assert!(!creds.is_expired());
+    }
+
+    #[test]
+    fn credentials_expired_when_past() {
+        let creds = OAuthCredentials {
+            access: "token".to_string(),
+            refresh: "refresh".to_string(),
+            expires: 1000, // epoch + 1 second
+        };
+        assert!(creds.is_expired());
+    }
+
+    #[test]
+    fn credentials_expired_when_zero() {
+        let creds = OAuthCredentials {
+            access: "token".to_string(),
+            refresh: "refresh".to_string(),
+            expires: 0,
+        };
+        assert!(creds.is_expired());
+    }
 }

@@ -424,4 +424,204 @@ mod tests {
         let result = AnthropicThinker::parse_response(json);
         assert!(result.is_err());
     }
+
+    #[test]
+    fn parse_empty_calls_array_fails() {
+        let json = r#"{"thought": "hmm", "action": {"calls": []}}"#;
+        let result = AnthropicThinker::parse_response(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("no valid tool calls"));
+    }
+
+    #[test]
+    fn parse_missing_thought_defaults_to_empty() {
+        let json = r#"{"answer": "42"}"#;
+        let step = AnthropicThinker::parse_response(json).unwrap();
+        match step {
+            Step::Finish { thought, answer } => {
+                assert_eq!(thought, "");
+                assert_eq!(answer, "42");
+            }
+            _ => panic!("expected Finish"),
+        }
+    }
+
+    #[test]
+    fn parse_non_string_arg_values_serialized() {
+        let json = r#"{
+            "thought": "test",
+            "action": {
+                "calls": [
+                    {"tool": "shell", "args": {"count": 42, "verbose": true}}
+                ]
+            }
+        }"#;
+        let step = AnthropicThinker::parse_response(json).unwrap();
+        match step {
+            Step::Act { calls, .. } => {
+                assert_eq!(calls[0].args.get("count").unwrap(), "42");
+                assert_eq!(calls[0].args.get("verbose").unwrap(), "true");
+            }
+            _ => panic!("expected Act"),
+        }
+    }
+
+    #[test]
+    fn parse_answer_takes_priority_over_action() {
+        // If both "answer" and "action" are present, answer wins
+        let json = r#"{
+            "thought": "done",
+            "answer": "the answer",
+            "action": {"calls": [{"tool": "shell", "args": {"command": "ls"}}]}
+        }"#;
+        let step = AnthropicThinker::parse_response(json).unwrap();
+        assert!(matches!(step, Step::Finish { .. }));
+    }
+
+    #[test]
+    fn extract_json_plain() {
+        assert_eq!(extract_json(r#"{"a": 1}"#), r#"{"a": 1}"#);
+    }
+
+    #[test]
+    fn extract_json_with_json_fence() {
+        let input = "```json\n{\"a\": 1}\n```";
+        assert_eq!(extract_json(input), r#"{"a": 1}"#);
+    }
+
+    #[test]
+    fn extract_json_with_plain_fence() {
+        let input = "```\n{\"a\": 1}\n```";
+        assert_eq!(extract_json(input), r#"{"a": 1}"#);
+    }
+
+    #[test]
+    fn extract_json_trims_whitespace() {
+        assert_eq!(extract_json("  \n {\"a\": 1}  \n "), r#"{"a": 1}"#);
+    }
+
+    #[test]
+    fn extract_json_no_closing_fence_returns_as_is() {
+        // Malformed fence — just return trimmed
+        let input = "```json\n{\"a\": 1}";
+        assert_eq!(extract_json(input), input.trim());
+    }
+
+    #[test]
+    fn build_system_prompt_lists_tools() {
+        let context = Context {
+            task: "test".to_string(),
+            history: vec![],
+            available_tools: vec![
+                crate::thinker::ToolDescription {
+                    name: "shell".to_string(),
+                    description: "run commands".to_string(),
+                },
+                crate::thinker::ToolDescription {
+                    name: "read".to_string(),
+                    description: "read files".to_string(),
+                },
+            ],
+        };
+
+        let prompt = AnthropicThinker::build_system_prompt(&context);
+        assert!(prompt.contains("- shell: run commands"));
+        assert!(prompt.contains("- read: read files"));
+        assert!(prompt.contains("Golem"));
+        assert!(prompt.contains("ReAct"));
+    }
+
+    #[test]
+    fn build_messages_task_only() {
+        let context = Context {
+            task: "do something".to_string(),
+            history: vec![],
+            available_tools: vec![],
+        };
+
+        let messages = AnthropicThinker::build_messages(&context);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, "user");
+        assert_eq!(messages[0].content, "Task: do something");
+    }
+
+    #[test]
+    fn build_messages_with_iteration_history() {
+        use crate::tools::{Outcome, ToolResult};
+
+        let context = Context {
+            task: "check kernel".to_string(),
+            history: vec![
+                MemoryEntry::Task {
+                    content: "check kernel".to_string(),
+                },
+                MemoryEntry::Iteration {
+                    thought: "let me check".to_string(),
+                    results: vec![ToolResult {
+                        tool: "shell".to_string(),
+                        outcome: Outcome::Success("6.18.8".to_string()),
+                    }],
+                },
+            ],
+            available_tools: vec![],
+        };
+
+        let messages = AnthropicThinker::build_messages(&context);
+        // Task message + assistant thought + user observation = 3
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0].role, "user");
+        assert_eq!(messages[1].role, "assistant");
+        assert!(messages[1].content.contains("let me check"));
+        assert_eq!(messages[2].role, "user");
+        assert!(messages[2].content.contains("6.18.8"));
+        assert!(messages[2].content.contains("✓"));
+    }
+
+    #[test]
+    fn build_messages_with_error_result() {
+        use crate::tools::{Outcome, ToolResult};
+
+        let context = Context {
+            task: "test".to_string(),
+            history: vec![
+                MemoryEntry::Task {
+                    content: "test".to_string(),
+                },
+                MemoryEntry::Iteration {
+                    thought: "try something".to_string(),
+                    results: vec![ToolResult {
+                        tool: "shell".to_string(),
+                        outcome: Outcome::Error("command not found".to_string()),
+                    }],
+                },
+            ],
+            available_tools: vec![],
+        };
+
+        let messages = AnthropicThinker::build_messages(&context);
+        assert_eq!(messages.len(), 3);
+        assert!(messages[2].content.contains("✗"));
+        assert!(messages[2].content.contains("command not found"));
+    }
+
+    #[test]
+    fn build_messages_ignores_answer_entries() {
+        let context = Context {
+            task: "test".to_string(),
+            history: vec![
+                MemoryEntry::Task {
+                    content: "test".to_string(),
+                },
+                MemoryEntry::Answer {
+                    thought: "done".to_string(),
+                    content: "42".to_string(),
+                },
+            ],
+            available_tools: vec![],
+        };
+
+        let messages = AnthropicThinker::build_messages(&context);
+        // Only the task message, Answer is ignored
+        assert_eq!(messages.len(), 1);
+    }
 }
