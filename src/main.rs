@@ -1,9 +1,3 @@
-mod auth;
-mod engine;
-mod memory;
-mod thinker;
-mod tools;
-
 use std::io::{self, Write};
 use std::sync::Arc;
 use std::time::Duration;
@@ -12,16 +6,16 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueEnum};
 
-use auth::storage::{AuthStorage, Credential};
-use auth::oauth;
-use engine::react::{ReactConfig, ReactEngine};
-use engine::Engine;
-use memory::sqlite::SqliteMemory;
-use thinker::anthropic::AnthropicThinker;
-use thinker::human::HumanThinker;
-use thinker::Thinker;
-use tools::shell::{ShellConfig, ShellMode, ShellTool};
-use tools::ToolRegistry;
+use golem::auth::storage::{AuthStorage, Credential};
+use golem::auth::oauth;
+use golem::engine::react::{ReactConfig, ReactEngine};
+use golem::engine::Engine;
+use golem::memory::sqlite::SqliteMemory;
+use golem::thinker::anthropic::AnthropicThinker;
+use golem::thinker::human::HumanThinker;
+use golem::thinker::Thinker;
+use golem::tools::shell::{ShellConfig, ShellMode, ShellTool};
+use golem::tools::ToolRegistry;
 
 #[derive(Debug, Clone, ValueEnum)]
 enum Provider {
