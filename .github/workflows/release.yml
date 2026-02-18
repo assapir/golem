@@ -203,9 +203,9 @@ jobs:
           cp aur/PKGBUILD /tmp/aur-repo/PKGBUILD
 
           cd /tmp/aur-repo
-          # Generate .SRCINFO (need makepkg from pacman)
-          docker run --rm -v "$PWD:/pkg" -w /pkg archlinux:latest \
-            bash -c "pacman -Sy --noconfirm pacman-contrib && makepkg --printsrcinfo > .SRCINFO"
+          # Generate .SRCINFO (makepkg refuses to run as root)
+          docker run --rm -v "$PWD:/pkg" archlinux:latest \
+            bash -c "useradd -m builder && chown -R builder /pkg && su builder -c 'cd /pkg && makepkg --printsrcinfo > .SRCINFO'"
 
           git config user.name "Assaf Sapir"
           git config user.email "assapir@users.noreply.github.com"
