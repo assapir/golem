@@ -118,25 +118,6 @@ Everything is a trait. Everything is swappable.
 
 See [AGENTS.md](AGENTS.md) for full architecture and contributing instructions.
 
-## Status
-
-- [x] ReAct loop with parallel tool execution
-- [x] Shell tool with security controls (read-only default, denylist, env filtering)
-- [x] SQLite persistent memory
-- [x] Human-in-the-loop thinker
-- [x] Anthropic provider (OAuth + API key)
-- [x] CI/CD with auto versioning and multi-platform releases
-- [x] AUR package (`golem-bin`)
-- [x] Clean Ctrl+C / Ctrl+D signal handling
-- [x] Startup banner with session info
-- [x] Cumulative token usage tracking
-- [x] Trait-based REPL commands with plugin support
-- [ ] OpenAI provider
-- [ ] Google Gemini provider
-- [ ] Model selection
-- [ ] More tools (file read/write, search)
-- [ ] Self-modifying tools (runtime tool creation)
-
 ## License
 
 GPL-2.0
