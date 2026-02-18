@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -147,8 +147,9 @@ You MUST respond with valid JSON in one of two formats:
         // Try to extract JSON from the response (may be wrapped in markdown fences)
         let json_str = extract_json(text);
 
-        let response: serde_json::Value = serde_json::from_str(json_str)
-            .map_err(|e| anyhow::anyhow!("failed to parse LLM response as JSON: {}\nraw: {}", e, text))?;
+        let response: serde_json::Value = serde_json::from_str(json_str).map_err(|e| {
+            anyhow::anyhow!("failed to parse LLM response as JSON: {}\nraw: {}", e, text)
+        })?;
 
         let thought = response
             .get("thought")
@@ -430,7 +431,12 @@ mod tests {
         let json = r#"{"thought": "hmm", "action": {"calls": []}}"#;
         let result = AnthropicThinker::parse_response(json);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("no valid tool calls"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("no valid tool calls")
+        );
     }
 
     #[test]

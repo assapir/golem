@@ -89,8 +89,7 @@ impl AuthStorage {
                 Credential::OAuth(mut oauth) => {
                     if oauth.is_expired() {
                         // Refresh the token
-                        let refreshed =
-                            super::oauth::refresh_token(&oauth.refresh).await?;
+                        let refreshed = super::oauth::refresh_token(&oauth.refresh).await?;
                         oauth = refreshed.clone();
                         self.set(provider, Credential::OAuth(refreshed))?;
                     }

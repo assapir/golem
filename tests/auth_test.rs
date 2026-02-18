@@ -1,6 +1,6 @@
 use std::fs;
 
-use golem::auth::oauth::{build_authorize_url, verify_pkce, OAuthCredentials};
+use golem::auth::oauth::{OAuthCredentials, build_authorize_url, verify_pkce};
 use golem::auth::storage::{AuthStorage, Credential};
 
 /// Helper: create a temp dir with an AuthStorage pointing at it.
@@ -24,7 +24,12 @@ fn get_returns_none_when_no_file() {
 fn set_and_get_api_key() {
     let (storage, _dir) = temp_storage();
     storage
-        .set("anthropic", Credential::ApiKey { key: "sk-test".to_string() })
+        .set(
+            "anthropic",
+            Credential::ApiKey {
+                key: "sk-test".to_string(),
+            },
+        )
         .unwrap();
 
     let cred = storage.get("anthropic").unwrap().unwrap();
@@ -42,9 +47,7 @@ fn set_and_get_oauth() {
         refresh: "refresh-token".to_string(),
         expires: 9999999999999,
     };
-    storage
-        .set("anthropic", Credential::OAuth(oauth))
-        .unwrap();
+    storage.set("anthropic", Credential::OAuth(oauth)).unwrap();
 
     let cred = storage.get("anthropic").unwrap().unwrap();
     match cred {
@@ -61,7 +64,12 @@ fn set_and_get_oauth() {
 fn remove_deletes_credential() {
     let (storage, _dir) = temp_storage();
     storage
-        .set("anthropic", Credential::ApiKey { key: "sk-test".to_string() })
+        .set(
+            "anthropic",
+            Credential::ApiKey {
+                key: "sk-test".to_string(),
+            },
+        )
         .unwrap();
 
     storage.remove("anthropic").unwrap();
@@ -79,10 +87,20 @@ fn remove_nonexistent_is_ok() {
 fn multiple_providers_independent() {
     let (storage, _dir) = temp_storage();
     storage
-        .set("anthropic", Credential::ApiKey { key: "sk-ant".to_string() })
+        .set(
+            "anthropic",
+            Credential::ApiKey {
+                key: "sk-ant".to_string(),
+            },
+        )
         .unwrap();
     storage
-        .set("openai", Credential::ApiKey { key: "sk-oai".to_string() })
+        .set(
+            "openai",
+            Credential::ApiKey {
+                key: "sk-oai".to_string(),
+            },
+        )
         .unwrap();
 
     let ant = storage.get("anthropic").unwrap().unwrap();
@@ -101,10 +119,20 @@ fn multiple_providers_independent() {
 fn set_overwrites_existing() {
     let (storage, _dir) = temp_storage();
     storage
-        .set("anthropic", Credential::ApiKey { key: "old".to_string() })
+        .set(
+            "anthropic",
+            Credential::ApiKey {
+                key: "old".to_string(),
+            },
+        )
         .unwrap();
     storage
-        .set("anthropic", Credential::ApiKey { key: "new".to_string() })
+        .set(
+            "anthropic",
+            Credential::ApiKey {
+                key: "new".to_string(),
+            },
+        )
         .unwrap();
 
     match storage.get("anthropic").unwrap().unwrap() {
@@ -117,10 +145,20 @@ fn set_overwrites_existing() {
 fn remove_one_preserves_others() {
     let (storage, _dir) = temp_storage();
     storage
-        .set("anthropic", Credential::ApiKey { key: "ant".to_string() })
+        .set(
+            "anthropic",
+            Credential::ApiKey {
+                key: "ant".to_string(),
+            },
+        )
         .unwrap();
     storage
-        .set("openai", Credential::ApiKey { key: "oai".to_string() })
+        .set(
+            "openai",
+            Credential::ApiKey {
+                key: "oai".to_string(),
+            },
+        )
         .unwrap();
 
     storage.remove("anthropic").unwrap();
@@ -138,7 +176,12 @@ fn auth_file_has_0600_permissions() {
 
     let (storage, dir) = temp_storage();
     storage
-        .set("test", Credential::ApiKey { key: "secret".to_string() })
+        .set(
+            "test",
+            Credential::ApiKey {
+                key: "secret".to_string(),
+            },
+        )
         .unwrap();
 
     let path = dir.path().join("auth.json");
@@ -152,7 +195,12 @@ fn auth_file_has_0600_permissions() {
 fn stored_json_is_readable() {
     let (storage, dir) = temp_storage();
     storage
-        .set("anthropic", Credential::ApiKey { key: "sk-test".to_string() })
+        .set(
+            "anthropic",
+            Credential::ApiKey {
+                key: "sk-test".to_string(),
+            },
+        )
         .unwrap();
 
     let path = dir.path().join("auth.json");
@@ -171,9 +219,7 @@ fn oauth_stored_json_format() {
         refresh: "refresh".to_string(),
         expires: 12345,
     };
-    storage
-        .set("anthropic", Credential::OAuth(oauth))
-        .unwrap();
+    storage.set("anthropic", Credential::OAuth(oauth)).unwrap();
 
     let path = dir.path().join("auth.json");
     let content = fs::read_to_string(path).unwrap();
@@ -191,7 +237,12 @@ fn oauth_stored_json_format() {
 async fn get_api_key_from_api_key_credential() {
     let (storage, _dir) = temp_storage();
     storage
-        .set("anthropic", Credential::ApiKey { key: "sk-my-key".to_string() })
+        .set(
+            "anthropic",
+            Credential::ApiKey {
+                key: "sk-my-key".to_string(),
+            },
+        )
         .unwrap();
 
     let key = storage
@@ -209,9 +260,7 @@ async fn get_api_key_from_oauth_non_expired() {
         refresh: "refresh".to_string(),
         expires: u64::MAX, // far future
     };
-    storage
-        .set("anthropic", Credential::OAuth(oauth))
-        .unwrap();
+    storage.set("anthropic", Credential::OAuth(oauth)).unwrap();
 
     let key = storage
         .get_api_key("anthropic", "GOLEM_TEST_NONEXISTENT_VAR")
@@ -264,7 +313,12 @@ async fn get_api_key_ignores_empty_env() {
 async fn get_api_key_credential_takes_priority_over_env() {
     let (storage, _dir) = temp_storage();
     storage
-        .set("anthropic", Credential::ApiKey { key: "from-file".to_string() })
+        .set(
+            "anthropic",
+            Credential::ApiKey {
+                key: "from-file".to_string(),
+            },
+        )
         .unwrap();
     unsafe { std::env::set_var("GOLEM_TEST_PRIORITY_KEY", "from-env") };
 

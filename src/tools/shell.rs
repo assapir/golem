@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::io::{self, Write};
@@ -83,14 +83,7 @@ const WRITE_PATTERNS: &[&str] = &[
 
 /// Safe environment variables to pass through. Everything else is stripped.
 const SAFE_ENV_VARS: &[&str] = &[
-    "PATH",
-    "HOME",
-    "USER",
-    "SHELL",
-    "LANG",
-    "LC_ALL",
-    "TERM",
-    "TZ",
+    "PATH", "HOME", "USER", "SHELL", "LANG", "LC_ALL", "TERM", "TZ",
 ];
 
 /// Shell execution mode.
@@ -203,9 +196,7 @@ impl ShellTool {
     fn filtered_env() -> Vec<(String, String)> {
         SAFE_ENV_VARS
             .iter()
-            .filter_map(|key| {
-                std::env::var(key).ok().map(|val| (key.to_string(), val))
-            })
+            .filter_map(|key| std::env::var(key).ok().map(|val| (key.to_string(), val)))
             .collect()
     }
 
@@ -254,9 +245,7 @@ impl Tool for ShellTool {
         }
 
         // Confirmation prompt
-        if self.config.require_confirmation
-            && !Self::confirm(cmd)?
-        {
+        if self.config.require_confirmation && !Self::confirm(cmd)? {
             bail!("cancelled by user");
         }
 

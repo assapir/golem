@@ -6,16 +6,16 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueEnum};
 
-use golem::auth::storage::{AuthStorage, Credential};
 use golem::auth::oauth;
-use golem::engine::react::{ReactConfig, ReactEngine};
+use golem::auth::storage::{AuthStorage, Credential};
 use golem::engine::Engine;
+use golem::engine::react::{ReactConfig, ReactEngine};
 use golem::memory::sqlite::SqliteMemory;
+use golem::thinker::Thinker;
 use golem::thinker::anthropic::AnthropicThinker;
 use golem::thinker::human::HumanThinker;
-use golem::thinker::Thinker;
-use golem::tools::shell::{ShellConfig, ShellMode, ShellTool};
 use golem::tools::ToolRegistry;
+use golem::tools::shell::{ShellConfig, ShellMode, ShellTool};
 
 #[derive(Debug, Clone, ValueEnum)]
 enum Provider {

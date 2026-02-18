@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use rand::RngExt;
 use sha2::{Digest, Sha256};
@@ -81,9 +81,7 @@ pub fn build_authorize_url() -> (String, String) {
 /// Exchange an authorization code for tokens.
 /// `auth_code_raw` is the string pasted by the user, in the format `code#state`.
 pub async fn exchange_code(auth_code_raw: &str, verifier: &str) -> Result<OAuthCredentials> {
-    let (code, state) = auth_code_raw
-        .split_once('#')
-        .unwrap_or((auth_code_raw, ""));
+    let (code, state) = auth_code_raw.split_once('#').unwrap_or((auth_code_raw, ""));
 
     let body = serde_json::json!({
         "grant_type": "authorization_code",
@@ -215,7 +213,10 @@ mod tests {
     #[test]
     fn pkce_wrong_verifier_fails() {
         let pkce = generate_pkce();
-        assert!(!verify_pkce("wrong-verifier-value-xxxxxxxxxxxxxxxxxx", &pkce.challenge));
+        assert!(!verify_pkce(
+            "wrong-verifier-value-xxxxxxxxxxxxxxxxxx",
+            &pkce.challenge
+        ));
     }
 
     #[test]
@@ -240,10 +241,7 @@ mod tests {
         assert!(url.contains("state="));
 
         // The state parameter should be the PKCE verifier
-        let state_param = url
-            .split('&')
-            .find(|p| p.starts_with("state="))
-            .unwrap();
+        let state_param = url.split('&').find(|p| p.starts_with("state=")).unwrap();
         let state_value = state_param.strip_prefix("state=").unwrap();
         assert_eq!(state_value, verifier);
     }

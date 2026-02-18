@@ -12,19 +12,14 @@ use crate::tools::{Outcome, ToolResult};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MemoryEntry {
     /// The initial task given to the agent.
-    Task {
-        content: String,
-    },
+    Task { content: String },
     /// A thought + action + observations from one ReAct iteration.
     Iteration {
         thought: String,
         results: Vec<ToolResult>,
     },
     /// The final answer.
-    Answer {
-        thought: String,
-        content: String,
-    },
+    Answer { thought: String, content: String },
 }
 
 impl fmt::Display for MemoryEntry {
