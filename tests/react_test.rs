@@ -5,12 +5,20 @@ use golem::engine::Engine;
 use golem::engine::react::{ReactConfig, ReactEngine};
 use golem::memory::sqlite::SqliteMemory;
 use golem::thinker::mock::MockThinker;
-use golem::thinker::{Step, Thinker, ToolCall};
+use golem::thinker::{Step, StepResult, Thinker, ToolCall};
 use golem::tools::ToolRegistry;
 use golem::tools::shell::{ShellConfig, ShellMode, ShellTool};
 
+/// Wrap steps into StepResults with no token usage (convenience for tests).
+fn wrap(steps: Vec<Step>) -> Vec<StepResult> {
+    steps
+        .into_iter()
+        .map(|step| StepResult { step, usage: None })
+        .collect()
+}
+
 async fn build_engine(steps: Vec<Step>) -> ReactEngine {
-    let thinker = Box::new(MockThinker::new(steps));
+    let thinker = Box::new(MockThinker::new(wrap(steps)));
     let tools = Arc::new(ToolRegistry::new());
     tools
         .register(Arc::new(ShellTool::new(ShellConfig {
@@ -137,14 +145,77 @@ async fn swap_thinker_at_runtime() {
     assert_eq!(result, "answer from brain 1");
 
     // Swap to a different thinker
-    let new_thinker: Box<dyn Thinker> = Box::new(MockThinker::new(vec![Step::Finish {
+    let new_thinker: Box<dyn Thinker> = Box::new(MockThinker::new(wrap(vec![Step::Finish {
         thought: "second brain".to_string(),
         answer: "answer from brain 2".to_string(),
-    }]));
+    }])));
     engine.set_thinker(new_thinker).await;
 
     let result = engine.run("task 2").await.unwrap();
     assert_eq!(result, "answer from brain 2");
+}
+
+#[tokio::test]
+async fn session_usage_accumulates_across_runs() {
+    use golem::thinker::TokenUsage;
+
+    let steps = vec![
+        StepResult {
+            step: Step::Finish {
+                thought: "first".to_string(),
+                answer: "a".to_string(),
+            },
+            usage: Some(TokenUsage {
+                input_tokens: 100,
+                output_tokens: 50,
+            }),
+        },
+        StepResult {
+            step: Step::Finish {
+                thought: "second".to_string(),
+                answer: "b".to_string(),
+            },
+            usage: Some(TokenUsage {
+                input_tokens: 200,
+                output_tokens: 75,
+            }),
+        },
+    ];
+
+    let thinker = Box::new(MockThinker::new(steps));
+    let tools = Arc::new(ToolRegistry::new());
+    tools
+        .register(Arc::new(ShellTool::new(ShellConfig {
+            mode: ShellMode::ReadWrite,
+            working_dir: std::env::current_dir().unwrap(),
+            require_confirmation: false,
+            ..ShellConfig::default()
+        })))
+        .await;
+    let memory = Box::new(SqliteMemory::in_memory().unwrap());
+    let mut engine = ReactEngine::new(thinker, tools, memory, ReactConfig::default());
+
+    engine.run("first task").await.unwrap();
+    engine.run("second task").await.unwrap();
+
+    let usage = engine.session_usage();
+    assert_eq!(usage.input_tokens, 300);
+    assert_eq!(usage.output_tokens, 125);
+    assert_eq!(usage.total(), 425);
+}
+
+#[tokio::test]
+async fn session_usage_zero_when_no_tokens() {
+    let mut engine = build_engine(vec![Step::Finish {
+        thought: "done".to_string(),
+        answer: "ok".to_string(),
+    }])
+    .await;
+
+    engine.run("task").await.unwrap();
+
+    let usage = engine.session_usage();
+    assert_eq!(usage.total(), 0);
 }
 
 #[tokio::test]

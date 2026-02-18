@@ -87,7 +87,7 @@ const SAFE_ENV_VARS: &[&str] = &[
 ];
 
 /// Shell execution mode.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ShellMode {
     /// Only read-only commands allowed (default).
     ReadOnly,

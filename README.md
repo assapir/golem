@@ -106,6 +106,8 @@ See [AGENTS.md](AGENTS.md) for full architecture and contributing instructions.
 - [x] CI/CD with auto versioning and multi-platform releases
 - [x] AUR package (`golem-bin`)
 - [x] Clean Ctrl+C / Ctrl+D signal handling
+- [x] Startup banner with session info
+- [x] Cumulative token usage tracking
 - [ ] OpenAI provider
 - [ ] Google Gemini provider
 - [ ] Model selection

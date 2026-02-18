@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::io::{self, Write};
 
-use super::{Context, Step, Thinker, ToolCall};
+use super::{Context, Step, StepResult, Thinker, ToolCall};
 
 /// You are the brain. Type thoughts and actions at the terminal.
 pub struct HumanThinker;
@@ -43,7 +43,7 @@ impl HumanThinker {
 
 #[async_trait]
 impl Thinker for HumanThinker {
-    async fn next_step(&self, context: &Context) -> Result<Step> {
+    async fn next_step(&self, context: &Context) -> Result<StepResult> {
         Self::print_context(context);
 
         let thought = Self::read_line("\nThought: ")?;
@@ -51,7 +51,10 @@ impl Thinker for HumanThinker {
 
         if action == "finish" {
             let answer = Self::read_line("Answer: ")?;
-            return Ok(Step::Finish { thought, answer });
+            return Ok(StepResult {
+                step: Step::Finish { thought, answer },
+                usage: None,
+            });
         }
 
         // Parse "tool:arg" or "tool:key=val,key=val"
@@ -82,6 +85,9 @@ impl Thinker for HumanThinker {
             })
             .collect();
 
-        Ok(Step::Act { thought, calls })
+        Ok(StepResult {
+            step: Step::Act { thought, calls },
+            usage: None,
+        })
     }
 }
