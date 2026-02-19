@@ -1,3 +1,4 @@
+use golem::auth;
 use golem::auth::oauth::{OAuthCredentials, build_authorize_url, verify_pkce};
 use golem::auth::storage::{AuthStorage, Credential};
 
@@ -315,4 +316,107 @@ fn authorize_url_is_unique_per_call() {
 
     assert_ne!(url1, url2);
     assert_ne!(v1, v2);
+}
+
+// ── auth::login ───────────────────────────────────────────────────
+
+#[tokio::test]
+async fn login_rejects_unsupported_provider() {
+    let err = auth::login(":memory:", "openai", "code", "verifier")
+        .await
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("unsupported provider: openai"),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
+async fn login_rejects_empty_provider() {
+    let err = auth::login(":memory:", "", "code", "verifier")
+        .await
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("unsupported provider"),
+        "unexpected error: {err}"
+    );
+}
+
+// Note: login happy path cannot be tested without mocking the Anthropic
+// token endpoint — exchange_code makes a real HTTP call.
+
+// ── auth::logout ──────────────────────────────────────────────────
+
+#[test]
+fn logout_removes_credentials() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("logout-test.db");
+    let path_str = path.to_str().unwrap();
+
+    // Store a credential first
+    let storage = AuthStorage::open(path_str).unwrap();
+    storage
+        .set(
+            "anthropic",
+            Credential::ApiKey {
+                key: "sk-test".to_string(),
+            },
+        )
+        .unwrap();
+    assert!(storage.get("anthropic").unwrap().is_some());
+    drop(storage);
+
+    // Logout via the shared function
+    auth::logout(path_str, "anthropic").unwrap();
+
+    // Verify credential is gone
+    let storage = AuthStorage::open(path_str).unwrap();
+    assert!(storage.get("anthropic").unwrap().is_none());
+}
+
+#[test]
+fn logout_succeeds_when_no_credentials_exist() {
+    auth::logout(":memory:", "anthropic").unwrap();
+}
+
+#[test]
+fn logout_preserves_other_providers() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("logout-preserve.db");
+    let path_str = path.to_str().unwrap();
+
+    let storage = AuthStorage::open(path_str).unwrap();
+    storage
+        .set(
+            "anthropic",
+            Credential::ApiKey {
+                key: "sk-ant".to_string(),
+            },
+        )
+        .unwrap();
+    storage
+        .set(
+            "openai",
+            Credential::ApiKey {
+                key: "sk-oai".to_string(),
+            },
+        )
+        .unwrap();
+    drop(storage);
+
+    auth::logout(path_str, "anthropic").unwrap();
+
+    let storage = AuthStorage::open(path_str).unwrap();
+    assert!(storage.get("anthropic").unwrap().is_none());
+    assert!(storage.get("openai").unwrap().is_some());
+}
+
+#[test]
+fn logout_error_includes_context() {
+    let err = auth::logout("/nonexistent/path/to/db.sqlite", "anthropic").unwrap_err();
+    let chain = format!("{err:#}");
+    assert!(
+        chain.contains("failed to open auth storage"),
+        "missing context in: {chain}"
+    );
 }
