@@ -9,6 +9,7 @@ mod help;
 mod login;
 mod logout;
 mod model;
+mod new;
 mod quit;
 mod tokens;
 mod tools;
@@ -87,6 +88,7 @@ impl CommandRegistry {
             Arc::new(tools::ToolsCommand),
             Arc::new(tokens::TokensCommand),
             Arc::new(model::ModelCommand),
+            Arc::new(new::NewCommand),
             Arc::new(login::LoginCommand),
             Arc::new(logout::LogoutCommand),
             Arc::new(quit::QuitCommand),
@@ -200,6 +202,7 @@ mod tests {
         assert!(names.contains(&"/tools"));
         assert!(names.contains(&"/tokens"));
         assert!(names.contains(&"/model"));
+        assert!(names.contains(&"/new"));
         assert!(names.contains(&"/login"));
         assert!(names.contains(&"/logout"));
         assert!(names.contains(&"/quit"));

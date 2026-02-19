@@ -57,11 +57,31 @@ fn truncate(s: &str, max: usize) -> &str {
     }
 }
 
+/// A completed task summary carried across tasks in a session.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionEntry {
+    /// The task the user gave.
+    pub task: String,
+    /// The final answer the agent produced.
+    pub answer: String,
+}
+
 /// What the agent remembers. Could be in-memory, SQLite, etc.
 #[async_trait]
 pub trait Memory: Send + Sync {
+    // --- Per-task memory (cleared each run) ---
+
     async fn store(&self, entry: MemoryEntry) -> Result<()>;
     async fn history(&self) -> Result<Vec<MemoryEntry>>;
     async fn recall(&self, query: &str) -> Result<Vec<MemoryEntry>>;
     async fn clear(&self) -> Result<()>;
+
+    // --- Session memory (persists across tasks) ---
+
+    /// Store a completed task summary.
+    async fn store_session(&self, entry: SessionEntry) -> Result<()>;
+    /// Retrieve the last `limit` session entries (oldest first).
+    async fn session_history(&self, limit: usize) -> Result<Vec<SessionEntry>>;
+    /// Clear all session history (e.g. `/new` command).
+    async fn clear_session(&self) -> Result<()>;
 }

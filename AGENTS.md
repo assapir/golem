@@ -23,8 +23,10 @@ cargo fmt                      # CI enforces cargo fmt --check
 |---------|-----------|
 | ReAct loop | `tests/react_test.rs` |
 | Tools | `tests/tools_test.rs` |
-| Memory | `tests/memory_test.rs` |
+| Memory (task + session) | `tests/memory_test.rs` |
 | Auth | `tests/auth_test.rs` |
+| Config | `src/config/mod.rs` |
+| Events | `src/events.rs` |
 | Prompts | `src/prompts/react.rs` |
 | Constants | `src/consts.rs` |
 | Banner | `src/banner.rs` |
@@ -45,13 +47,15 @@ src/
 ├── lib.rs               # re-exports
 ├── banner.rs            # startup banner + session summary
 ├── commands/            # Command trait + CommandRegistry + built-in /slash commands
+├── config/              # SQLite key-value config (model preference, etc.)
 ├── consts.rs            # project-wide constants (from Cargo.toml metadata)
 ├── auth/                # OAuth PKCE flow + credential storage (SQLite)
 ├── engine/              # Engine trait + ReactEngine (ReAct loop)
+├── events.rs            # EventBus (tokio broadcast) for decoupled communication
 ├── prompts/             # shared ReAct system prompt builder
 ├── thinker/             # Thinker trait + providers (anthropic, human, mock)
 ├── tools/               # Tool trait + ToolRegistry + ShellTool
-└── memory/              # Memory trait + SqliteMemory
+└── memory/              # Memory trait + SqliteMemory (task + session memory)
 ```
 
 ## Adding a new tool
@@ -65,8 +69,23 @@ src/
 1. Create `src/thinker/my_provider.rs`, implement `Thinker` trait.
 2. Use `build_react_system_prompt()` from `src/prompts/react.rs` — don't duplicate.
 3. Return `StepResult { step, usage: Option<TokenUsage> }` from `next_step()`.
-4. Add `Provider` enum variant + match arm in `main.rs`.
-5. Test with `MockThinker` in `tests/react_test.rs`.
+4. Implement `models()`, `model()`, `set_model()` for model selection support.
+5. Add `Provider` enum variant + match arm in `main.rs`.
+6. Test with `MockThinker` in `tests/react_test.rs`.
+
+## Adding a new command
+
+1. Create `src/commands/my_cmd.rs`, implement `Command` trait (`Send + Sync + async`).
+2. Register in `CommandRegistry::new()` in `src/commands/mod.rs`.
+3. Return `CommandResult::Handled`, `StateChanged(StateChange::*)`, or `Quit`.
+4. Add tests in the command file's `#[cfg(test)]` module.
+
+## Key abstractions
+
+- **`StateChange`** — enum for REPL state updates (`Auth`, `Model`). Commands return `CommandResult::StateChanged(StateChange::*)` and the REPL applies the change.
+- **`EventBus`** — `tokio::sync::broadcast` channel for decoupled notifications. Components subscribe via `bus.subscribe()`.
+- **`SessionEntry`** — task + answer summary persisted across tasks. Loaded into `Context.session_history` so the LLM sees prior conversation.
+- **`Config`** — SQLite key-value store for persistent settings (model preference, etc.).
 
 ## Workflow
 

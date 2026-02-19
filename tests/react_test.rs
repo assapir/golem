@@ -246,6 +246,90 @@ async fn memory_cleared_between_runs() {
     );
 }
 
+// ── Session memory ────────────────────────────────────────────────
+
+#[tokio::test]
+async fn session_entry_stored_after_task() {
+    let thinker = Box::new(MockThinker::new(wrap(vec![Step::Finish {
+        thought: "done".to_string(),
+        answer: "42".to_string(),
+    }])));
+    let tools = Arc::new(ToolRegistry::new());
+    let mem = Box::new(SqliteMemory::in_memory().unwrap());
+    let mut engine = ReactEngine::new(thinker, tools, mem, ReactConfig::default());
+
+    let history_before = engine.session_history().await.unwrap();
+    assert!(history_before.is_empty());
+
+    engine.run("what is 6 * 7").await.unwrap();
+
+    let history_after = engine.session_history().await.unwrap();
+    assert_eq!(history_after.len(), 1);
+    assert_eq!(history_after[0].task, "what is 6 * 7");
+    assert_eq!(history_after[0].answer, "42");
+}
+
+#[tokio::test]
+async fn multi_task_session_builds_history() {
+    let steps = wrap(vec![
+        Step::Finish {
+            thought: "first done".to_string(),
+            answer: "files: a.txt, b.txt".to_string(),
+        },
+        Step::Finish {
+            thought: "second done".to_string(),
+            answer: "deleted b.txt".to_string(),
+        },
+    ]);
+
+    let thinker = Box::new(MockThinker::new(steps));
+    let tools = Arc::new(ToolRegistry::new());
+    let memory = Box::new(SqliteMemory::in_memory().unwrap());
+    let mut engine = ReactEngine::new(thinker, tools, memory, ReactConfig::default());
+
+    engine.run("list files").await.unwrap();
+    engine.run("delete the biggest one").await.unwrap();
+
+    let history = engine.session_history().await.unwrap();
+    assert_eq!(history.len(), 2);
+    assert_eq!(history[0].task, "list files");
+    assert_eq!(history[0].answer, "files: a.txt, b.txt");
+    assert_eq!(history[1].task, "delete the biggest one");
+    assert_eq!(history[1].answer, "deleted b.txt");
+}
+
+#[tokio::test]
+async fn clear_session_resets_history() {
+    let steps = wrap(vec![
+        Step::Finish {
+            thought: "done".to_string(),
+            answer: "first answer".to_string(),
+        },
+        Step::Finish {
+            thought: "done".to_string(),
+            answer: "second answer".to_string(),
+        },
+    ]);
+
+    let thinker = Box::new(MockThinker::new(steps));
+    let tools = Arc::new(ToolRegistry::new());
+    let memory = Box::new(SqliteMemory::in_memory().unwrap());
+    let mut engine = ReactEngine::new(thinker, tools, memory, ReactConfig::default());
+
+    engine.run("first task").await.unwrap();
+    let history = engine.session_history().await.unwrap();
+    assert_eq!(history.len(), 1);
+
+    engine.clear_session().await.unwrap();
+    let history = engine.session_history().await.unwrap();
+    assert!(history.is_empty());
+
+    engine.run("second task").await.unwrap();
+    let history = engine.session_history().await.unwrap();
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].task, "second task");
+}
+
 // ── Model management ──────────────────────────────────────────────
 
 #[tokio::test]
