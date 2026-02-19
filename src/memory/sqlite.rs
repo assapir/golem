@@ -48,14 +48,13 @@ impl Memory for SqliteMemory {
     async fn history(&self) -> Result<Vec<MemoryEntry>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare("SELECT entry FROM memory ORDER BY id ASC")?;
-        let entries = stmt
-            .query_map([], |row| {
-                let json: String = row.get(0)?;
-                Ok(json)
-            })?
-            .filter_map(|r| r.ok())
-            .filter_map(|json| serde_json::from_str(&json).ok())
-            .collect();
+        let jsons = stmt
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        let entries = jsons
+            .iter()
+            .map(|json| serde_json::from_str(json))
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(entries)
     }
 
@@ -64,15 +63,14 @@ impl Memory for SqliteMemory {
         let conn = self.conn.lock().unwrap();
         let mut stmt =
             conn.prepare("SELECT entry FROM memory WHERE entry LIKE ?1 ORDER BY id ASC")?;
-        let pattern = format!("%{}%", query);
-        let entries = stmt
-            .query_map([&pattern], |row| {
-                let json: String = row.get(0)?;
-                Ok(json)
-            })?
-            .filter_map(|r| r.ok())
-            .filter_map(|json| serde_json::from_str(&json).ok())
-            .collect();
+        let pattern = format!("%{query}%");
+        let jsons = stmt
+            .query_map([&pattern], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        let entries = jsons
+            .iter()
+            .map(|json| serde_json::from_str(json))
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(entries)
     }
 
@@ -108,8 +106,7 @@ impl Memory for SqliteMemory {
                     answer: row.get(1)?,
                 })
             })?
-            .filter_map(|r| r.ok())
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(entries)
     }
 

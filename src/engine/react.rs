@@ -82,6 +82,13 @@ impl ReactEngine {
         thinker.models().await
     }
 
+    /// Retrieve session history (prior task summaries).
+    pub async fn session_history(&self) -> anyhow::Result<Vec<crate::memory::SessionEntry>> {
+        self.memory
+            .session_history(DEFAULT_SESSION_HISTORY_LIMIT)
+            .await
+    }
+
     /// Clear session history (e.g. from `/new` command).
     pub async fn clear_session(&self) -> anyhow::Result<()> {
         self.memory.clear_session().await

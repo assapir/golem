@@ -258,11 +258,15 @@ async fn session_entry_stored_after_task() {
     let mem = Box::new(SqliteMemory::in_memory().unwrap());
     let mut engine = ReactEngine::new(thinker, tools, mem, ReactConfig::default());
 
+    let history_before = engine.session_history().await.unwrap();
+    assert!(history_before.is_empty());
+
     engine.run("what is 6 * 7").await.unwrap();
 
-    // Can't directly access engine's memory for session_history,
-    // but we can verify via clear_session (which wouldn't error if table exists)
-    engine.clear_session().await.unwrap();
+    let history_after = engine.session_history().await.unwrap();
+    assert_eq!(history_after.len(), 1);
+    assert_eq!(history_after[0].task, "what is 6 * 7");
+    assert_eq!(history_after[0].answer, "42");
 }
 
 #[tokio::test]
@@ -286,11 +290,12 @@ async fn multi_task_session_builds_history() {
     engine.run("list files").await.unwrap();
     engine.run("delete the biggest one").await.unwrap();
 
-    // The second task should have had session_history with the first task.
-    // We can't inspect the context directly from here, but we can verify
-    // that two session entries were stored (the engine stores after each run).
-    // clear_session succeeds means the table/data exists.
-    engine.clear_session().await.unwrap();
+    let history = engine.session_history().await.unwrap();
+    assert_eq!(history.len(), 2);
+    assert_eq!(history[0].task, "list files");
+    assert_eq!(history[0].answer, "files: a.txt, b.txt");
+    assert_eq!(history[1].task, "delete the biggest one");
+    assert_eq!(history[1].answer, "deleted b.txt");
 }
 
 #[tokio::test]
@@ -312,14 +317,17 @@ async fn clear_session_resets_history() {
     let mut engine = ReactEngine::new(thinker, tools, memory, ReactConfig::default());
 
     engine.run("first task").await.unwrap();
+    let history = engine.session_history().await.unwrap();
+    assert_eq!(history.len(), 1);
 
-    // Clear session — second task should have no session history
     engine.clear_session().await.unwrap();
+    let history = engine.session_history().await.unwrap();
+    assert!(history.is_empty());
 
     engine.run("second task").await.unwrap();
-
-    // Verify clear_session didn't break the engine
-    engine.clear_session().await.unwrap();
+    let history = engine.session_history().await.unwrap();
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].task, "second task");
 }
 
 // ── Model management ──────────────────────────────────────────────

@@ -120,7 +120,7 @@ golem> delete the biggest one
 => (LLM knows file2.txt is 50KB from the prior task)
 ```
 
-Session history persists across restarts. Use `/new` to clear it and start fresh. The last 50 task summaries are kept by default.
+Session history persists across restarts. Use `/new` to clear it and start fresh. By default, only the last 50 task summaries are loaded into context.
 
 ## Design
 
