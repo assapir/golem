@@ -8,6 +8,7 @@
 mod help;
 mod login;
 mod logout;
+mod model;
 mod quit;
 mod tokens;
 mod tools;
@@ -16,6 +17,7 @@ mod whoami;
 use async_trait::async_trait;
 use std::sync::Arc;
 
+use crate::engine::react::ReactEngine;
 use crate::thinker::TokenUsage;
 
 /// Session info available to commands during execution.
@@ -27,6 +29,8 @@ pub struct SessionInfo<'a> {
     pub tools: &'a [String],
     pub usage: TokenUsage,
     pub db_path: &'a str,
+    /// Engine reference for commands that need provider access (e.g. `/model`).
+    pub engine: Option<&'a ReactEngine>,
 }
 
 /// What the REPL should do after a command runs.
@@ -37,6 +41,8 @@ pub enum CommandResult {
     Handled,
     /// Auth changed — caller should update auth status.
     AuthChanged(String),
+    /// Model changed — caller should update model display and persist.
+    ModelChanged(String),
     /// Exit the REPL.
     Quit,
 }
@@ -72,6 +78,7 @@ impl CommandRegistry {
             Arc::new(whoami::WhoamiCommand),
             Arc::new(tools::ToolsCommand),
             Arc::new(tokens::TokensCommand),
+            Arc::new(model::ModelCommand),
             Arc::new(login::LoginCommand),
             Arc::new(logout::LogoutCommand),
             Arc::new(quit::QuitCommand),
@@ -172,6 +179,7 @@ mod tests {
             tools: &[],
             usage: TokenUsage::default(),
             db_path: ":memory:",
+            engine: None,
         }
     }
 
@@ -183,6 +191,7 @@ mod tests {
         assert!(names.contains(&"/whoami"));
         assert!(names.contains(&"/tools"));
         assert!(names.contains(&"/tokens"));
+        assert!(names.contains(&"/model"));
         assert!(names.contains(&"/login"));
         assert!(names.contains(&"/logout"));
         assert!(names.contains(&"/quit"));
