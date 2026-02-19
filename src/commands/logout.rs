@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use super::{Command, CommandResult, SessionInfo};
+use super::{Command, CommandResult, SessionInfo, StateChange};
 use crate::auth;
 
 pub struct LogoutCommand;
@@ -22,7 +22,7 @@ impl Command for LogoutCommand {
             return CommandResult::Handled;
         }
         println!("  ✓ logged out from {provider}");
-        CommandResult::AuthChanged("not authenticated".to_string())
+        CommandResult::StateChanged(StateChange::Auth("not authenticated".to_string()))
     }
 }
 
@@ -36,7 +36,7 @@ mod tests {
     async fn returns_auth_changed_when_no_credentials() {
         assert!(matches!(
             LogoutCommand.execute(&test_info()).await,
-            CommandResult::AuthChanged(_)
+            CommandResult::StateChanged(StateChange::Auth(_))
         ));
     }
 
@@ -56,7 +56,10 @@ mod tests {
         let info = test_info();
         let result = LogoutCommand.execute(&info).await;
 
-        assert!(matches!(result, CommandResult::AuthChanged(_)));
+        assert!(matches!(
+            result,
+            CommandResult::StateChanged(StateChange::Auth(_))
+        ));
         // Note: the command opens its own connection to :memory:,
         // so this tests the command flow, not the same DB instance.
     }

@@ -10,7 +10,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use golem::auth::oauth;
 use golem::auth::storage::{AuthStorage, Credential};
 use golem::banner::{BannerInfo, print_banner, print_session_summary};
-use golem::commands::{CommandRegistry, CommandResult, SessionInfo};
+use golem::commands::{CommandRegistry, CommandResult, SessionInfo, StateChange};
 use golem::config::Config;
 use golem::consts::{DEFAULT_MODEL, default_db_path};
 use golem::engine::Engine;
@@ -285,16 +285,19 @@ async fn main() -> anyhow::Result<()> {
         };
         match commands.dispatch(task, &session_info).await {
             CommandResult::Handled => continue,
-            CommandResult::AuthChanged(new_status) => {
-                auth_status = new_status;
-                continue;
-            }
-            CommandResult::ModelChanged(new_model) => {
-                engine.set_model(new_model.clone()).await;
-                if let Err(e) = app_config.set("model", &new_model) {
-                    eprintln!("  warning: failed to persist model preference: {e}");
+            CommandResult::StateChanged(change) => {
+                match change {
+                    StateChange::Auth(new_status) => {
+                        auth_status = new_status;
+                    }
+                    StateChange::Model(new_model) => {
+                        engine.set_model(new_model.clone()).await;
+                        if let Err(e) = app_config.set("model", &new_model) {
+                            eprintln!("  warning: failed to persist model preference: {e}");
+                        }
+                        model_name = new_model;
+                    }
                 }
-                model_name = new_model;
                 continue;
             }
             CommandResult::Quit => break,

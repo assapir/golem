@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use super::{Command, CommandResult, SessionInfo};
+use super::{Command, CommandResult, SessionInfo, StateChange};
 
 pub struct ModelCommand;
 
@@ -93,7 +93,7 @@ impl Command for ModelCommand {
         }
 
         println!("  ✓ model changed to {}", selected.display_name);
-        CommandResult::ModelChanged(selected.id.clone())
+        CommandResult::StateChanged(StateChange::Model(selected.id.clone()))
     }
 }
 

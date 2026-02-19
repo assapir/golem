@@ -33,16 +33,23 @@ pub struct SessionInfo<'a> {
     pub engine: Option<&'a ReactEngine>,
 }
 
+/// A state change the REPL needs to apply after a command runs.
+#[derive(Debug, Clone)]
+pub enum StateChange {
+    /// Auth status changed (new status string).
+    Auth(String),
+    /// Active model changed (new model ID).
+    Model(String),
+}
+
 /// What the REPL should do after a command runs.
 pub enum CommandResult {
     /// Not a command — pass input to the thinker.
     NotACommand,
     /// Command handled, continue the REPL loop.
     Handled,
-    /// Auth changed — caller should update auth status.
-    AuthChanged(String),
-    /// Model changed — caller should update model display and persist.
-    ModelChanged(String),
+    /// Command produced a state change the REPL must apply.
+    StateChanged(StateChange),
     /// Exit the REPL.
     Quit,
 }
