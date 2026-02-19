@@ -62,6 +62,24 @@ impl ReactEngine {
     pub fn session_usage(&self) -> TokenUsage {
         self.session_usage
     }
+
+    /// Get the current model name from the thinker.
+    pub async fn model(&self) -> String {
+        let thinker = self.thinker.read().await;
+        thinker.model().to_string()
+    }
+
+    /// Change the active model on the thinker.
+    pub async fn set_model(&self, model: String) {
+        let mut thinker = self.thinker.write().await;
+        thinker.set_model(model);
+    }
+
+    /// Fetch available models from the thinker's provider.
+    pub async fn models(&self) -> anyhow::Result<Vec<crate::thinker::ModelInfo>> {
+        let thinker = self.thinker.read().await;
+        thinker.models().await
+    }
 }
 
 #[async_trait]

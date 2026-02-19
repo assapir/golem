@@ -73,10 +73,32 @@ pub struct ToolDescription {
     pub description: String,
 }
 
+/// Metadata about an available model.
+#[derive(Debug, Clone)]
+pub struct ModelInfo {
+    /// Model identifier (e.g. `"claude-sonnet-4-20250514"`).
+    pub id: String,
+    /// Human-readable display name (e.g. `"Claude Sonnet 4"`).
+    pub display_name: String,
+    /// ISO 8601 creation date, if available.
+    pub created_at: Option<String>,
+}
+
 /// The borrowed brain. Could be a human, an LLM, or a test script.
 #[async_trait]
 pub trait Thinker: Send + Sync {
+    /// Produce the next step given the current conversation context.
     async fn next_step(&self, context: &Context) -> Result<StepResult>;
+
+    /// Fetch available models from the provider.
+    /// Returns an empty vec if the provider does not support model listing.
+    async fn models(&self) -> Result<Vec<ModelInfo>>;
+
+    /// Get the current model identifier.
+    fn model(&self) -> &str;
+
+    /// Change the active model. Takes effect on the next `next_step` call.
+    fn set_model(&mut self, model: String);
 }
 
 /// Parse an LLM text response into a `Step`. Handles JSON wrapped in

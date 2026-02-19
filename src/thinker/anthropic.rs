@@ -9,10 +9,12 @@ use crate::prompts::build_react_system_prompt;
 use crate::tools::Outcome;
 
 use super::{
-    Context, MAX_PARSE_RETRIES, PARSE_RETRY_PROMPT, StepResult, Thinker, TokenUsage, parse_response,
+    Context, MAX_PARSE_RETRIES, ModelInfo, PARSE_RETRY_PROMPT, StepResult, Thinker, TokenUsage,
+    parse_response,
 };
 
 const API_URL: &str = "https://api.anthropic.com/v1/messages";
+const MODELS_API_URL: &str = "https://api.anthropic.com/v1/models";
 const API_VERSION: &str = "2023-06-01";
 const MAX_TOKENS: u32 = 8192;
 const OAUTH_BETA: &str = "claude-code-20250219,oauth-2025-04-20";
@@ -177,8 +179,81 @@ impl AnthropicThinker {
     }
 }
 
+impl AnthropicThinker {
+    /// Fetch the list of models from the Anthropic API.
+    async fn fetch_models(&self, api_key: &str) -> Result<Vec<ModelInfo>> {
+        let is_oauth = api_key.contains("sk-ant-oat");
+
+        let client = reqwest::Client::new();
+        let mut req = client
+            .get(MODELS_API_URL)
+            .header("anthropic-version", API_VERSION)
+            .header("content-type", "application/json");
+
+        if is_oauth {
+            req = req
+                .header("authorization", format!("Bearer {api_key}"))
+                .header("anthropic-beta", OAUTH_BETA)
+                .header(
+                    "user-agent",
+                    format!("claude-cli/{CLAUDE_CODE_VERSION} (external, cli)"),
+                )
+                .header("x-app", "cli");
+        } else {
+            req = req.header("x-api-key", api_key);
+        }
+
+        let resp = req.send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            bail!("Anthropic models API error ({status}): {text}");
+        }
+
+        let list: ModelsListResponse = resp.json().await?;
+
+        let mut models: Vec<ModelInfo> = list
+            .data
+            .into_iter()
+            .filter(|m| m.model_type == "model")
+            .map(|m| ModelInfo {
+                id: m.id.clone(),
+                display_name: m.display_name,
+                created_at: Some(m.created_at),
+            })
+            .collect();
+
+        models.sort_by(|a, b| a.id.cmp(&b.id));
+
+        Ok(models)
+    }
+}
+
 #[async_trait]
 impl Thinker for AnthropicThinker {
+    async fn models(&self) -> Result<Vec<ModelInfo>> {
+        let api_key = self
+            .auth
+            .get_api_key("anthropic", "ANTHROPIC_API_KEY")
+            .await?
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "no Anthropic credentials found. Run `golem login` or set ANTHROPIC_API_KEY."
+                )
+            })?;
+
+        self.fetch_models(&api_key).await
+    }
+
+    fn model(&self) -> &str {
+        &self.model
+    }
+
+    fn set_model(&mut self, model: String) {
+        self.model = model;
+    }
+
     async fn next_step(&self, context: &Context) -> Result<StepResult> {
         let api_key = self
             .auth
@@ -274,6 +349,22 @@ struct ContentBlock {
 struct Usage {
     input_tokens: u64,
     output_tokens: u64,
+}
+
+// --- Models API types ---
+
+#[derive(Deserialize)]
+struct ModelsListResponse {
+    data: Vec<ModelEntry>,
+}
+
+#[derive(Deserialize)]
+struct ModelEntry {
+    id: String,
+    display_name: String,
+    created_at: String,
+    #[serde(rename = "type")]
+    model_type: String,
 }
 
 #[cfg(test)]

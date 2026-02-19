@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::io::{self, Write};
 
-use super::{Context, Step, StepResult, Thinker, ToolCall};
+use super::{Context, ModelInfo, Step, StepResult, Thinker, ToolCall};
 
 /// You are the brain. Type thoughts and actions at the terminal.
 pub struct HumanThinker;
@@ -43,6 +43,18 @@ impl HumanThinker {
 
 #[async_trait]
 impl Thinker for HumanThinker {
+    async fn models(&self) -> Result<Vec<ModelInfo>> {
+        Ok(vec![])
+    }
+
+    fn model(&self) -> &str {
+        "—"
+    }
+
+    fn set_model(&mut self, _model: String) {
+        // no-op: human thinker has no model
+    }
+
     async fn next_step(&self, context: &Context) -> Result<StepResult> {
         Self::print_context(context);
 
