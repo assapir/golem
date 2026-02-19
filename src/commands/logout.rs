@@ -18,7 +18,7 @@ impl Command for LogoutCommand {
     async fn execute(&self, info: &SessionInfo<'_>) -> CommandResult {
         let provider = info.provider;
         if let Err(e) = auth::logout(info.db_path, provider) {
-            eprintln!("  ✗ logout failed: {e}");
+            eprintln!("  ✗ logout from {provider} failed: {e}");
             return CommandResult::Handled;
         }
         println!("  ✓ logged out from {provider}");
