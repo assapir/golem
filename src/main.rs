@@ -313,35 +313,32 @@ async fn handle_login(provider: &LoginProvider) -> anyhow::Result<()> {
         std::fs::create_dir_all(parent)?;
     }
 
-    match provider {
-        LoginProvider::Anthropic => {
-            println!("Logging in to Anthropic (Claude Pro/Max)...\n");
+    let provider_name = match provider {
+        LoginProvider::Anthropic => "anthropic",
+    };
 
-            let (url, verifier) = oauth::build_authorize_url();
-            let _ = open::that(&url);
+    println!("Logging in to {provider_name} (Claude Pro/Max)...\n");
 
-            println!("Open this URL to authenticate:\n");
-            println!("  {}\n", url);
+    let (url, verifier) = oauth::build_authorize_url();
+    let _ = open::that(&url);
 
-            print!("Paste the authorization code: ");
-            io::stdout().flush()?;
-            let mut code = String::new();
-            io::stdin().read_line(&mut code)?;
-            let code = code.trim();
+    println!("Open this URL to authenticate:\n");
+    println!("  {url}\n");
 
-            if code.is_empty() {
-                anyhow::bail!("no authorization code provided");
-            }
+    print!("Paste the authorization code: ");
+    io::stdout().flush()?;
+    let mut code = String::new();
+    io::stdin().read_line(&mut code)?;
+    let code = code.trim();
 
-            println!("\nExchanging code for tokens...");
-            let credentials = oauth::exchange_code(code, &verifier).await?;
-
-            let storage = AuthStorage::open(&db_str)?;
-            storage.set("anthropic", Credential::OAuth(credentials))?;
-
-            println!("✓ Logged in to Anthropic successfully!");
-        }
+    if code.is_empty() {
+        anyhow::bail!("no authorization code provided");
     }
+
+    println!("\nExchanging code for tokens...");
+    golem::auth::login(&db_str, provider_name, code, &verifier).await?;
+
+    println!("✓ Logged in to {provider_name} successfully!");
     Ok(())
 }
 
@@ -353,12 +350,11 @@ fn handle_logout(provider: &LoginProvider) -> anyhow::Result<()> {
         std::fs::create_dir_all(parent)?;
     }
 
-    match provider {
-        LoginProvider::Anthropic => {
-            let storage = AuthStorage::open(&db_str)?;
-            storage.remove("anthropic")?;
-            println!("✓ Logged out from Anthropic.");
-        }
-    }
+    let provider_name = match provider {
+        LoginProvider::Anthropic => "anthropic",
+    };
+
+    golem::auth::logout(&db_str, provider_name)?;
+    println!("✓ Logged out from {provider_name}.");
     Ok(())
 }

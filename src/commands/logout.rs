@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 
 use super::{Command, CommandResult, SessionInfo};
-use crate::auth::storage::AuthStorage;
+use crate::auth;
 
 pub struct LogoutCommand;
 
@@ -17,15 +17,8 @@ impl Command for LogoutCommand {
 
     async fn execute(&self, info: &SessionInfo<'_>) -> CommandResult {
         let provider = info.provider;
-        let storage = match AuthStorage::open(info.db_path) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("  ✗ failed to open auth storage: {e}");
-                return CommandResult::Handled;
-            }
-        };
-        if let Err(e) = storage.remove(provider) {
-            eprintln!("  ✗ failed to remove credentials: {e}");
+        if let Err(e) = auth::logout(info.db_path, provider) {
+            eprintln!("  ✗ logout from {provider} failed: {e}");
             return CommandResult::Handled;
         }
         println!("  ✓ logged out from {provider}");
@@ -36,7 +29,7 @@ impl Command for LogoutCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auth::storage::Credential;
+    use crate::auth::storage::{AuthStorage, Credential};
     use crate::commands::tests::test_info;
 
     #[tokio::test]

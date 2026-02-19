@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 
 use super::{Command, CommandResult, SessionInfo};
+use crate::auth;
 use crate::auth::oauth;
-use crate::auth::storage::{AuthStorage, Credential};
 
 pub struct LoginCommand;
 
@@ -44,19 +44,8 @@ impl Command for LoginCommand {
         }
 
         println!("\nExchanging code for tokens...");
-        match oauth::exchange_code(code, &verifier).await {
-            Ok(credentials) => {
-                let storage = match AuthStorage::open(info.db_path) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        eprintln!("  ✗ failed to open auth storage: {e}");
-                        return CommandResult::Handled;
-                    }
-                };
-                if let Err(e) = storage.set(provider, Credential::OAuth(credentials)) {
-                    eprintln!("  ✗ failed to save credentials: {e}");
-                    return CommandResult::Handled;
-                }
+        match auth::login(info.db_path, provider, code, &verifier).await {
+            Ok(()) => {
                 println!("  ✓ logged in to {provider}");
                 CommandResult::AuthChanged("OAuth ✓".to_string())
             }
