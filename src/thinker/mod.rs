@@ -6,7 +6,7 @@ use anyhow::{Result, bail};
 use async_trait::async_trait;
 use std::collections::HashMap;
 
-use crate::memory::MemoryEntry;
+use crate::memory::{MemoryEntry, SessionEntry};
 
 /// Maximum number of retry attempts when the LLM returns unparseable JSON.
 pub const MAX_PARSE_RETRIES: usize = 1;
@@ -63,6 +63,8 @@ pub struct StepResult {
 pub struct Context {
     pub task: String,
     pub history: Vec<MemoryEntry>,
+    /// Summaries of prior tasks in this session (oldest first).
+    pub session_history: Vec<SessionEntry>,
     pub available_tools: Vec<ToolDescription>,
 }
 

@@ -5,6 +5,7 @@ use std::time::Duration;
 use tokio::sync::RwLock;
 
 use super::Engine;
+use crate::consts::DEFAULT_SESSION_HISTORY_LIMIT;
 use crate::memory::{Memory, MemoryEntry};
 use crate::thinker::{Context, Step, Thinker, TokenUsage};
 use crate::tools::{Outcome, ToolRegistry, ToolResult};
@@ -80,12 +81,23 @@ impl ReactEngine {
         let thinker = self.thinker.read().await;
         thinker.models().await
     }
+
+    /// Clear session history (e.g. from `/new` command).
+    pub async fn clear_session(&self) -> anyhow::Result<()> {
+        self.memory.clear_session().await
+    }
 }
 
 #[async_trait]
 impl Engine for ReactEngine {
     async fn run(&mut self, task: &str) -> Result<String> {
-        // Each task starts with a clean slate
+        // Load session history before clearing per-task memory
+        let session_history = self
+            .memory
+            .session_history(DEFAULT_SESSION_HISTORY_LIMIT)
+            .await?;
+
+        // Each task starts with a clean slate (per-task memory only)
         self.memory.clear().await?;
 
         self.memory
@@ -98,6 +110,7 @@ impl Engine for ReactEngine {
             let context = Context {
                 task: task.to_string(),
                 history: self.memory.history().await?,
+                session_history: session_history.clone(),
                 available_tools: self.tools.descriptions().await,
             };
 
@@ -169,6 +182,14 @@ impl Engine for ReactEngine {
                         .store(MemoryEntry::Answer {
                             thought,
                             content: answer.clone(),
+                        })
+                        .await?;
+
+                    // Persist task summary for future tasks in this session
+                    self.memory
+                        .store_session(crate::memory::SessionEntry {
+                            task: task.to_string(),
+                            answer: answer.clone(),
                         })
                         .await?;
 

@@ -37,7 +37,25 @@ impl AnthropicThinker {
     fn build_messages(context: &Context) -> Vec<Message> {
         let mut messages: Vec<Message> = Vec::new();
 
-        // The task is the first user message
+        // Prepend session history as prior task/answer pairs
+        for entry in &context.session_history {
+            messages.push(Message {
+                role: "user".to_string(),
+                content: format!("Task: {}", entry.task),
+            });
+            messages.push(Message {
+                role: "assistant".to_string(),
+                content: format!(
+                    "{}",
+                    serde_json::json!({
+                        "thought": "completed",
+                        "answer": entry.answer
+                    })
+                ),
+            });
+        }
+
+        // The current task
         messages.push(Message {
             role: "user".to_string(),
             content: format!("Task: {}", context.task),
@@ -376,6 +394,7 @@ mod tests {
         let context = Context {
             task: "do something".to_string(),
             history: vec![],
+            session_history: vec![],
             available_tools: vec![],
         };
 
@@ -403,6 +422,7 @@ mod tests {
                     }],
                 },
             ],
+            session_history: vec![],
             available_tools: vec![],
         };
 
@@ -435,6 +455,7 @@ mod tests {
                     }],
                 },
             ],
+            session_history: vec![],
             available_tools: vec![],
         };
 
@@ -442,6 +463,61 @@ mod tests {
         assert_eq!(messages.len(), 3);
         assert!(messages[2].content.contains("✗"));
         assert!(messages[2].content.contains("command not found"));
+    }
+
+    #[test]
+    fn build_messages_includes_session_history() {
+        use crate::memory::SessionEntry;
+
+        let context = Context {
+            task: "delete the biggest file".to_string(),
+            history: vec![],
+            session_history: vec![SessionEntry {
+                task: "list files in /tmp".to_string(),
+                answer: "a.txt (10KB), b.txt (50KB), c.txt (1KB)".to_string(),
+            }],
+            available_tools: vec![],
+        };
+
+        let messages = AnthropicThinker::build_messages(&context);
+        // session: user task + assistant answer, then current: user task = 3
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0].role, "user");
+        assert!(messages[0].content.contains("list files in /tmp"));
+        assert_eq!(messages[1].role, "assistant");
+        assert!(messages[1].content.contains("a.txt (10KB)"));
+        assert_eq!(messages[2].role, "user");
+        assert!(messages[2].content.contains("delete the biggest file"));
+    }
+
+    #[test]
+    fn build_messages_session_history_before_current_task() {
+        use crate::memory::SessionEntry;
+
+        let context = Context {
+            task: "current task".to_string(),
+            history: vec![],
+            session_history: vec![
+                SessionEntry {
+                    task: "first".to_string(),
+                    answer: "answer 1".to_string(),
+                },
+                SessionEntry {
+                    task: "second".to_string(),
+                    answer: "answer 2".to_string(),
+                },
+            ],
+            available_tools: vec![],
+        };
+
+        let messages = AnthropicThinker::build_messages(&context);
+        // 2 session entries × 2 messages + 1 current task = 5
+        assert_eq!(messages.len(), 5);
+        assert!(messages[0].content.contains("first"));
+        assert!(messages[1].content.contains("answer 1"));
+        assert!(messages[2].content.contains("second"));
+        assert!(messages[3].content.contains("answer 2"));
+        assert!(messages[4].content.contains("current task"));
     }
 
     // --- OAuth detection ---
@@ -576,6 +652,7 @@ mod tests {
                     content: "42".to_string(),
                 },
             ],
+            session_history: vec![],
             available_tools: vec![],
         };
 

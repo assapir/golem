@@ -19,6 +19,17 @@ impl HumanThinker {
 
     fn print_context(context: &Context) {
         println!("\n{}", "=".repeat(60));
+
+        if !context.session_history.is_empty() {
+            println!("Session history:");
+            for entry in &context.session_history {
+                println!("  Q: {}", entry.task);
+                println!("  A: {}", entry.answer);
+                println!();
+            }
+            println!("{}", "-".repeat(60));
+        }
+
         println!("Task: {}", context.task);
         println!("{}", "-".repeat(60));
 

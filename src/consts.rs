@@ -9,6 +9,9 @@ pub const REPO: &str = env!("CARGO_PKG_REPOSITORY");
 /// Default Anthropic model when none is specified.
 pub const DEFAULT_MODEL: &str = "claude-sonnet-4-20250514";
 
+/// Maximum number of prior task summaries to include in session context.
+pub const DEFAULT_SESSION_HISTORY_LIMIT: usize = 50;
+
 /// Default database path: `~/.golem/golem.db`.
 /// Single DB for memory, credentials, and config.
 pub fn default_db_path() -> PathBuf {
