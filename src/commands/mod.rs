@@ -43,6 +43,7 @@ pub enum StateChange {
 }
 
 /// What the REPL should do after a command runs.
+#[derive(Debug)]
 pub enum CommandResult {
     /// Not a command — pass input to the thinker.
     NotACommand,
@@ -279,6 +280,34 @@ mod tests {
             CommandResult::Handled
         ));
         assert!(reg.help_text().contains("/ping"));
+    }
+
+    #[tokio::test]
+    async fn state_changed_variant_carries_value() {
+        struct FakeModelCommand;
+
+        #[async_trait]
+        impl Command for FakeModelCommand {
+            fn name(&self) -> &str {
+                "/fakemodel"
+            }
+            fn description(&self) -> &str {
+                "test"
+            }
+            async fn execute(&self, _info: &SessionInfo<'_>) -> CommandResult {
+                CommandResult::StateChanged(StateChange::Model("new-model".to_string()))
+            }
+        }
+
+        let mut reg = CommandRegistry::new();
+        reg.register(Arc::new(FakeModelCommand));
+
+        match reg.dispatch("/fakemodel", &test_info()).await {
+            CommandResult::StateChanged(StateChange::Model(model)) => {
+                assert_eq!(model, "new-model");
+            }
+            other => panic!("expected StateChanged(Model), got: {other:?}"),
+        }
     }
 
     #[test]
