@@ -21,7 +21,12 @@ pub struct EventBus {
 
 impl EventBus {
     /// Create a new event bus with the given channel capacity.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `capacity` is zero.
     pub fn new(capacity: usize) -> Self {
+        assert!(capacity > 0, "EventBus capacity must be non-zero");
         let (tx, _) = broadcast::channel(capacity);
         Self { tx }
     }

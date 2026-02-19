@@ -101,6 +101,27 @@ impl AnthropicThinker {
     }
 }
 
+/// Whether an API key is an OAuth token (vs a plain API key).
+fn is_oauth_token(api_key: &str) -> bool {
+    api_key.starts_with("sk-ant-oat")
+}
+
+/// Apply Anthropic auth headers to a request builder.
+fn apply_auth(builder: reqwest::RequestBuilder, api_key: &str) -> reqwest::RequestBuilder {
+    if is_oauth_token(api_key) {
+        builder
+            .header("authorization", format!("Bearer {api_key}"))
+            .header("anthropic-beta", OAUTH_BETA)
+            .header(
+                "user-agent",
+                format!("claude-cli/{CLAUDE_CODE_VERSION} (external, cli)"),
+            )
+            .header("x-app", "cli")
+    } else {
+        builder.header("x-api-key", api_key)
+    }
+}
+
 /// Raw API response: extracted text + optional token usage.
 struct RawResponse {
     text: String,
@@ -122,26 +143,13 @@ impl AnthropicThinker {
             messages,
         };
 
-        let is_oauth = api_key.contains("sk-ant-oat");
-
         let client = reqwest::Client::new();
-        let mut req = client
+        let req = client
             .post(API_URL)
             .header("anthropic-version", API_VERSION)
             .header("content-type", "application/json");
 
-        if is_oauth {
-            req = req
-                .header("authorization", format!("Bearer {}", api_key))
-                .header("anthropic-beta", OAUTH_BETA)
-                .header(
-                    "user-agent",
-                    format!("claude-cli/{} (external, cli)", CLAUDE_CODE_VERSION),
-                )
-                .header("x-app", "cli");
-        } else {
-            req = req.header("x-api-key", api_key);
-        }
+        let req = apply_auth(req, api_key);
 
         let resp = req.json(&body).send().await?;
 
@@ -182,26 +190,13 @@ impl AnthropicThinker {
 impl AnthropicThinker {
     /// Fetch the list of models from the Anthropic API.
     async fn fetch_models(&self, api_key: &str) -> Result<Vec<ModelInfo>> {
-        let is_oauth = api_key.contains("sk-ant-oat");
-
         let client = reqwest::Client::new();
-        let mut req = client
+        let req = client
             .get(MODELS_API_URL)
             .header("anthropic-version", API_VERSION)
             .header("content-type", "application/json");
 
-        if is_oauth {
-            req = req
-                .header("authorization", format!("Bearer {api_key}"))
-                .header("anthropic-beta", OAUTH_BETA)
-                .header(
-                    "user-agent",
-                    format!("claude-cli/{CLAUDE_CODE_VERSION} (external, cli)"),
-                )
-                .header("x-app", "cli");
-        } else {
-            req = req.header("x-api-key", api_key);
-        }
+        let req = apply_auth(req, api_key);
 
         let resp = req.send().await?;
 
@@ -213,20 +208,7 @@ impl AnthropicThinker {
 
         let list: ModelsListResponse = resp.json().await?;
 
-        let mut models: Vec<ModelInfo> = list
-            .data
-            .into_iter()
-            .filter(|m| m.model_type == "model")
-            .map(|m| ModelInfo {
-                id: m.id.clone(),
-                display_name: m.display_name,
-                created_at: Some(m.created_at),
-            })
-            .collect();
-
-        models.sort_by(|a, b| a.id.cmp(&b.id));
-
-        Ok(models)
+        Ok(parse_models_response(list))
     }
 }
 
@@ -362,9 +344,26 @@ struct ModelsListResponse {
 struct ModelEntry {
     id: String,
     display_name: String,
-    created_at: String,
+    created_at: Option<String>,
     #[serde(rename = "type")]
     model_type: String,
+}
+
+/// Filter to real models, map to `ModelInfo`, and sort by ID.
+fn parse_models_response(list: ModelsListResponse) -> Vec<ModelInfo> {
+    let mut models: Vec<ModelInfo> = list
+        .data
+        .into_iter()
+        .filter(|m| m.model_type == "model")
+        .map(|m| ModelInfo {
+            id: m.id,
+            display_name: m.display_name,
+            created_at: m.created_at,
+        })
+        .collect();
+
+    models.sort_by(|a, b| a.id.cmp(&b.id));
+    models
 }
 
 #[cfg(test)]
@@ -444,6 +443,125 @@ mod tests {
         assert!(messages[2].content.contains("✗"));
         assert!(messages[2].content.contains("command not found"));
     }
+
+    // --- OAuth detection ---
+
+    #[test]
+    fn oauth_token_detected() {
+        assert!(is_oauth_token("sk-ant-oat01-something"));
+    }
+
+    #[test]
+    fn api_key_not_detected_as_oauth() {
+        assert!(!is_oauth_token("sk-ant-api03-something"));
+        assert!(!is_oauth_token("some-key-containing-sk-ant-oat"));
+    }
+
+    // --- Models API parsing ---
+
+    fn sample_models_response() -> ModelsListResponse {
+        serde_json::from_str(
+            r#"{
+                "data": [
+                    {
+                        "id": "claude-sonnet-4-20250514",
+                        "display_name": "Claude Sonnet 4",
+                        "created_at": "2025-05-14T00:00:00Z",
+                        "type": "model"
+                    },
+                    {
+                        "id": "claude-haiku-3-20240307",
+                        "display_name": "Claude Haiku 3",
+                        "created_at": "2024-03-07T00:00:00Z",
+                        "type": "model"
+                    },
+                    {
+                        "id": "claude-opus-4-20250514",
+                        "display_name": "Claude Opus 4",
+                        "created_at": "2025-05-14T00:00:00Z",
+                        "type": "model"
+                    },
+                    {
+                        "id": "some-deprecated-thing",
+                        "display_name": "Deprecated",
+                        "created_at": null,
+                        "type": "deprecated_model"
+                    }
+                ],
+                "has_more": false,
+                "first_id": "claude-haiku-3-20240307",
+                "last_id": "some-deprecated-thing"
+            }"#,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn parse_models_filters_non_model_types() {
+        let models = parse_models_response(sample_models_response());
+        assert_eq!(models.len(), 3);
+        assert!(models.iter().all(|m| m.id != "some-deprecated-thing"));
+    }
+
+    #[test]
+    fn parse_models_sorted_by_id() {
+        let models = parse_models_response(sample_models_response());
+        let ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec![
+                "claude-haiku-3-20240307",
+                "claude-opus-4-20250514",
+                "claude-sonnet-4-20250514",
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_models_maps_fields_correctly() {
+        let models = parse_models_response(sample_models_response());
+        let sonnet = models
+            .iter()
+            .find(|m| m.id == "claude-sonnet-4-20250514")
+            .unwrap();
+        assert_eq!(sonnet.display_name, "Claude Sonnet 4");
+        assert_eq!(sonnet.created_at.as_deref(), Some("2025-05-14T00:00:00Z"));
+    }
+
+    #[test]
+    fn parse_models_handles_null_created_at() {
+        let list: ModelsListResponse = serde_json::from_str(
+            r#"{
+                "data": [
+                    {
+                        "id": "test-model",
+                        "display_name": "Test",
+                        "created_at": null,
+                        "type": "model"
+                    }
+                ],
+                "has_more": false,
+                "first_id": "test-model",
+                "last_id": "test-model"
+            }"#,
+        )
+        .unwrap();
+        let models = parse_models_response(list);
+        assert_eq!(models.len(), 1);
+        assert!(models[0].created_at.is_none());
+    }
+
+    #[test]
+    fn parse_models_empty_response() {
+        let list: ModelsListResponse = serde_json::from_str(
+            r#"{"data": [], "has_more": false, "first_id": null, "last_id": null}"#,
+        )
+        .unwrap();
+        let models = parse_models_response(list);
+        assert!(models.is_empty());
+    }
+
+    // --- Message building ---
 
     #[test]
     fn build_messages_ignores_answer_entries() {
