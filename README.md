@@ -100,11 +100,27 @@ Type `/help` at the prompt to see all available commands:
 | `/whoami` | | Show provider, model, and auth status |
 | `/tools` | | List registered tools |
 | `/tokens` | | Show session token usage |
+| `/model` | | List and switch the active model |
+| `/new` | | Start a new session (clear conversation history) |
 | `/login` | | Log in to the current provider |
 | `/logout` | | Log out from the current provider |
 | `/quit` | `quit`, `exit`, `/exit` | Exit the REPL |
 
 Commands are trait-based (`Command` trait + `CommandRegistry`) — plugins can register additional commands at runtime.
+
+## Session memory
+
+Golem remembers prior tasks within a session. Each completed task's question and answer are stored in SQLite, so follow-up tasks can reference earlier context:
+
+```
+golem> list files in /tmp
+=> file1.txt (10KB), file2.txt (50KB), file3.txt (1KB)
+
+golem> delete the biggest one
+=> (LLM knows file2.txt is 50KB from the prior task)
+```
+
+Session history persists across restarts. Use `/new` to clear it and start fresh. The last 50 task summaries are kept by default.
 
 ## Design
 
@@ -113,8 +129,10 @@ Everything is a trait. Everything is swappable.
 - **`Engine`** — the outermost boundary (`fn run(task) -> answer`)
 - **`Thinker`** — the brain (human, Anthropic, mock — picked via `--provider`)
 - **`Tool`** — something the agent can do (shell commands, more coming)
-- **`Command`** — built-in REPL commands (`/help`, `/login`, etc.)
-- **`Memory`** — what the agent remembers (SQLite-backed)
+- **`Command`** — built-in REPL commands (`/help`, `/model`, `/new`, etc.)
+- **`Memory`** — what the agent remembers (task iterations + session history, SQLite-backed)
+- **`Config`** — persistent key-value settings (model preference, etc.)
+- **`EventBus`** — decoupled broadcast channel for cross-component communication
 
 See [AGENTS.md](AGENTS.md) for full architecture and contributing instructions.
 

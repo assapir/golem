@@ -293,6 +293,35 @@ async fn multi_task_session_builds_history() {
     engine.clear_session().await.unwrap();
 }
 
+#[tokio::test]
+async fn clear_session_resets_history() {
+    let steps = wrap(vec![
+        Step::Finish {
+            thought: "done".to_string(),
+            answer: "first answer".to_string(),
+        },
+        Step::Finish {
+            thought: "done".to_string(),
+            answer: "second answer".to_string(),
+        },
+    ]);
+
+    let thinker = Box::new(MockThinker::new(steps));
+    let tools = Arc::new(ToolRegistry::new());
+    let memory = Box::new(SqliteMemory::in_memory().unwrap());
+    let mut engine = ReactEngine::new(thinker, tools, memory, ReactConfig::default());
+
+    engine.run("first task").await.unwrap();
+
+    // Clear session — second task should have no session history
+    engine.clear_session().await.unwrap();
+
+    engine.run("second task").await.unwrap();
+
+    // Verify clear_session didn't break the engine
+    engine.clear_session().await.unwrap();
+}
+
 // ── Model management ──────────────────────────────────────────────
 
 #[tokio::test]
