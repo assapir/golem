@@ -7,6 +7,7 @@ use tokio::sync::RwLock;
 use super::Engine;
 use crate::consts::DEFAULT_SESSION_HISTORY_LIMIT;
 use crate::memory::{Memory, MemoryEntry};
+use crate::spinner::Spinner;
 use crate::thinker::{Context, Step, Thinker, TokenUsage};
 use crate::tools::{Outcome, ToolRegistry, ToolResult};
 
@@ -122,8 +123,11 @@ impl Engine for ReactEngine {
             };
 
             let step_result = {
+                let spinner = Spinner::start("thinking...");
                 let thinker = self.thinker.read().await;
-                thinker.next_step(&context).await?
+                let result = thinker.next_step(&context).await;
+                spinner.stop().await;
+                result?
             };
 
             if let Some(usage) = step_result.usage {
