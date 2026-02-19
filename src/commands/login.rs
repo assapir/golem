@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use super::{Command, CommandResult, SessionInfo};
+use super::{Command, CommandResult, SessionInfo, StateChange};
 use crate::auth;
 use crate::auth::oauth;
 
@@ -47,7 +47,7 @@ impl Command for LoginCommand {
         match auth::login(info.db_path, provider, code, &verifier).await {
             Ok(()) => {
                 println!("  ✓ logged in to {provider}");
-                CommandResult::AuthChanged("OAuth ✓".to_string())
+                CommandResult::StateChanged(StateChange::Auth("OAuth ✓".to_string()))
             }
             Err(e) => {
                 eprintln!("  ✗ login failed: {e}");

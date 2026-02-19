@@ -8,6 +8,7 @@
 mod help;
 mod login;
 mod logout;
+mod model;
 mod quit;
 mod tokens;
 mod tools;
@@ -16,6 +17,7 @@ mod whoami;
 use async_trait::async_trait;
 use std::sync::Arc;
 
+use crate::engine::react::ReactEngine;
 use crate::thinker::TokenUsage;
 
 /// Session info available to commands during execution.
@@ -27,16 +29,28 @@ pub struct SessionInfo<'a> {
     pub tools: &'a [String],
     pub usage: TokenUsage,
     pub db_path: &'a str,
+    /// Engine reference for commands that need provider access (e.g. `/model`).
+    pub engine: Option<&'a ReactEngine>,
+}
+
+/// A state change the REPL needs to apply after a command runs.
+#[derive(Debug, Clone)]
+pub enum StateChange {
+    /// Auth status changed (new status string).
+    Auth(String),
+    /// Active model changed (new model ID).
+    Model(String),
 }
 
 /// What the REPL should do after a command runs.
+#[derive(Debug)]
 pub enum CommandResult {
     /// Not a command — pass input to the thinker.
     NotACommand,
     /// Command handled, continue the REPL loop.
     Handled,
-    /// Auth changed — caller should update auth status.
-    AuthChanged(String),
+    /// Command produced a state change the REPL must apply.
+    StateChanged(StateChange),
     /// Exit the REPL.
     Quit,
 }
@@ -72,6 +86,7 @@ impl CommandRegistry {
             Arc::new(whoami::WhoamiCommand),
             Arc::new(tools::ToolsCommand),
             Arc::new(tokens::TokensCommand),
+            Arc::new(model::ModelCommand),
             Arc::new(login::LoginCommand),
             Arc::new(logout::LogoutCommand),
             Arc::new(quit::QuitCommand),
@@ -172,6 +187,7 @@ mod tests {
             tools: &[],
             usage: TokenUsage::default(),
             db_path: ":memory:",
+            engine: None,
         }
     }
 
@@ -183,6 +199,7 @@ mod tests {
         assert!(names.contains(&"/whoami"));
         assert!(names.contains(&"/tools"));
         assert!(names.contains(&"/tokens"));
+        assert!(names.contains(&"/model"));
         assert!(names.contains(&"/login"));
         assert!(names.contains(&"/logout"));
         assert!(names.contains(&"/quit"));
@@ -263,6 +280,34 @@ mod tests {
             CommandResult::Handled
         ));
         assert!(reg.help_text().contains("/ping"));
+    }
+
+    #[tokio::test]
+    async fn state_changed_variant_carries_value() {
+        struct FakeModelCommand;
+
+        #[async_trait]
+        impl Command for FakeModelCommand {
+            fn name(&self) -> &str {
+                "/fakemodel"
+            }
+            fn description(&self) -> &str {
+                "test"
+            }
+            async fn execute(&self, _info: &SessionInfo<'_>) -> CommandResult {
+                CommandResult::StateChanged(StateChange::Model("new-model".to_string()))
+            }
+        }
+
+        let mut reg = CommandRegistry::new();
+        reg.register(Arc::new(FakeModelCommand));
+
+        match reg.dispatch("/fakemodel", &test_info()).await {
+            CommandResult::StateChanged(StateChange::Model(model)) => {
+                assert_eq!(model, "new-model");
+            }
+            other => panic!("expected StateChanged(Model), got: {other:?}"),
+        }
     }
 
     #[test]

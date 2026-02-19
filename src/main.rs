@@ -10,7 +10,8 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use golem::auth::oauth;
 use golem::auth::storage::{AuthStorage, Credential};
 use golem::banner::{BannerInfo, print_banner, print_session_summary};
-use golem::commands::{CommandRegistry, CommandResult, SessionInfo};
+use golem::commands::{CommandRegistry, CommandResult, SessionInfo, StateChange};
+use golem::config::Config;
 use golem::consts::{DEFAULT_MODEL, default_db_path};
 use golem::engine::Engine;
 use golem::engine::react::{ReactConfig, ReactEngine};
@@ -121,7 +122,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Wire up the thinker based on provider + model
-    let (thinker, provider_name, model_name, mut auth_status): (
+    let (thinker, provider_name, mut model_name, mut auth_status): (
         Box<dyn Thinker>,
         &str,
         String,
@@ -154,12 +155,15 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             };
-            let model = cli
-                .model
-                .clone()
-                .unwrap_or_else(|| DEFAULT_MODEL.to_string());
-            let thinker = Box::new(AnthropicThinker::new(cli.model, auth));
-            (thinker, "anthropic", model, auth_status)
+            // Model resolution: --model flag > config DB > default
+            let model = cli.model.clone().or_else(|| {
+                Config::open(&db_path)
+                    .ok()
+                    .and_then(|c| c.get("model").ok().flatten())
+            });
+            let thinker = Box::new(AnthropicThinker::new(model.clone(), auth));
+            let model_name = model.unwrap_or_else(|| DEFAULT_MODEL.to_string());
+            (thinker, "anthropic", model_name, auth_status)
         }
     };
 
@@ -220,6 +224,7 @@ async fn main() -> anyhow::Result<()> {
 
     let mut engine = ReactEngine::new(thinker, tools, memory, config);
     let commands = CommandRegistry::new();
+    let app_config = Config::open(&db_path)?;
 
     // Single task mode
     if let Some(task) = cli.run {
@@ -276,11 +281,23 @@ async fn main() -> anyhow::Result<()> {
             tools: &tool_names,
             usage: engine.session_usage(),
             db_path: &db_path,
+            engine: Some(&engine),
         };
         match commands.dispatch(task, &session_info).await {
             CommandResult::Handled => continue,
-            CommandResult::AuthChanged(new_status) => {
-                auth_status = new_status;
+            CommandResult::StateChanged(change) => {
+                match change {
+                    StateChange::Auth(new_status) => {
+                        auth_status = new_status;
+                    }
+                    StateChange::Model(new_model) => {
+                        engine.set_model(new_model.clone()).await;
+                        if let Err(e) = app_config.set("model", &new_model) {
+                            eprintln!("  warning: failed to persist model preference: {e}");
+                        }
+                        model_name = new_model;
+                    }
+                }
                 continue;
             }
             CommandResult::Quit => break,
