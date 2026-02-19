@@ -19,6 +19,8 @@ const ANSWER_FORMAT: &str = r#"{
   "answer": "your final answer to the task"
 }"#;
 
+const SESSION_CONTEXT: &str = "Earlier messages may contain prior tasks and answers from this session. Use that context — if a previous task already produced the information needed, reference it directly instead of re-running tools.";
+
 const RULES: &[&str] = &[
     "Your ENTIRE response must be a single JSON object. Never include text before or after the JSON.",
     "No markdown fences, no extra text, no extra keys.",
@@ -33,10 +35,23 @@ const RULES: &[&str] = &[
 ];
 
 pub fn build_react_system_prompt(tools: &[ToolDescription]) -> String {
+    build_react_system_prompt_with_session(tools, false)
+}
+
+pub fn build_react_system_prompt_with_session(
+    tools: &[ToolDescription],
+    has_session_history: bool,
+) -> String {
     let mut prompt = String::with_capacity(1024);
 
     prompt.push_str(INTRO);
     prompt.push('\n');
+
+    if has_session_history {
+        prompt.push('\n');
+        prompt.push_str(SESSION_CONTEXT);
+        prompt.push('\n');
+    }
 
     // Tool list
     if !tools.is_empty() {
@@ -151,5 +166,25 @@ mod tests {
         assert!(prompt.contains("CRITICAL"));
         assert!(prompt.contains("entire response must be a single JSON object"));
         assert!(prompt.contains("inside the \"thought\" field"));
+    }
+
+    #[test]
+    fn no_session_context_without_history() {
+        let prompt = build_react_system_prompt_with_session(&[], false);
+        assert!(!prompt.contains("Prior task"));
+        assert!(!prompt.contains("re-running tools"));
+    }
+
+    #[test]
+    fn includes_session_context_with_history() {
+        let prompt = build_react_system_prompt_with_session(&[], true);
+        assert!(prompt.contains("prior tasks"));
+        assert!(prompt.contains("re-running tools"));
+    }
+
+    #[test]
+    fn default_prompt_has_no_session_context() {
+        let prompt = build_react_system_prompt(&[]);
+        assert!(!prompt.contains("prior tasks"));
     }
 }
