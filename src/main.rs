@@ -16,6 +16,7 @@ use golem::engine::react::{ReactConfig, ReactEngine};
 use golem::memory::sqlite::SqliteMemory;
 use golem::provider::{LoginProvider, Provider, build_provider, handle_login, handle_logout};
 use golem::tools::ToolRegistry;
+use golem::tools::exit::ExitTool;
 use golem::tools::shell::{ShellConfig, ShellMode, ShellTool};
 
 #[derive(Parser)]
@@ -147,6 +148,10 @@ async fn main() -> anyhow::Result<()> {
 
     let tools = Arc::new(ToolRegistry::new());
     tools.register(Arc::new(ShellTool::new(shell_config))).await;
+    let exit_tool = Arc::new(ExitTool::new());
+    tools
+        .register(Arc::clone(&exit_tool) as Arc<dyn golem::tools::Tool>)
+        .await;
 
     // Collect tool names for /tools command
     let tool_names: Vec<String> = tools
@@ -256,6 +261,11 @@ async fn main() -> anyhow::Result<()> {
             _ = tokio::signal::ctrl_c() => {
                 println!("\n\ninterrupted");
             }
+        }
+
+        // Check if the agent invoked the exit tool
+        if exit_tool.triggered() {
+            break;
         }
     }
 
