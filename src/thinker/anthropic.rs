@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::AuthStorage;
+use crate::debug::DebugMode;
 use crate::memory::MemoryEntry;
 
 /// Default Anthropic model when none is specified.
@@ -26,13 +27,15 @@ const CLAUDE_CODE_VERSION: &str = "2.1.2";
 pub struct AnthropicThinker {
     model: String,
     auth: AuthStorage,
+    debug: DebugMode,
 }
 
 impl AnthropicThinker {
-    pub fn new(model: Option<String>, auth: AuthStorage) -> Self {
+    pub fn new(model: Option<String>, auth: AuthStorage, debug: DebugMode) -> Self {
         Self {
             model: model.unwrap_or_else(|| DEFAULT_MODEL.to_string()),
             auth,
+            debug,
         }
     }
 
@@ -168,6 +171,21 @@ impl AnthropicThinker {
             messages,
         };
 
+        if self.debug.is_enabled() {
+            let total_chars: usize = messages.iter().map(|m| m.content.len()).sum();
+            self.debug.log(&format!("→ POST {API_URL}"));
+            self.debug.log(&format!("→ model: {}", self.model));
+            self.debug.log(&format!(
+                "→ system: {}...",
+                &system[..system.len().min(200)]
+            ));
+            self.debug.log(&format!(
+                "→ messages: {} messages, {} chars",
+                messages.len(),
+                total_chars,
+            ));
+        }
+
         let client = reqwest::Client::new();
         let req = client
             .post(API_URL)
@@ -177,12 +195,16 @@ impl AnthropicThinker {
         let req = apply_auth(req, api_key);
 
         let resp = req.json(&body).send().await?;
+        let status = resp.status();
 
-        if !resp.status().is_success() {
-            let status = resp.status();
+        if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
+            self.debug.log(&format!("← status: {status}"));
+            self.debug.log(&format!("← error: {text}"));
             bail!("Anthropic API error ({}): {}", status, text);
         }
+
+        self.debug.log(&format!("← status: {status}"));
 
         let api_resp: ApiResponse = resp.json().await?;
 
@@ -207,6 +229,16 @@ impl AnthropicThinker {
             input_tokens: u.input_tokens,
             output_tokens: u.output_tokens,
         });
+
+        if self.debug.is_enabled() {
+            if let Some(u) = &usage {
+                self.debug.log(&format!(
+                    "← tokens: {} in / {} out",
+                    u.input_tokens, u.output_tokens
+                ));
+            }
+            self.debug.log(&format!("← raw: {text}"));
+        }
 
         Ok(RawResponse { text, usage })
     }

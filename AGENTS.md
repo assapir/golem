@@ -31,6 +31,7 @@ cargo fmt                      # CI enforces cargo fmt --check
 | Constants | `src/consts.rs` |
 | Banner | `src/banner.rs` |
 | Provider wiring | `src/provider.rs` |
+| Debug mode | `src/debug.rs` |
 
 ## Code style
 
@@ -48,6 +49,7 @@ src/
 ├── main.rs              # CLI parsing + REPL loop (no provider logic)
 ├── lib.rs               # re-exports
 ├── provider.rs          # ProviderConfig trait, provider impls, build/login/logout
+├── debug.rs             # DebugMode (shared AtomicBool toggle for raw LLM logging)
 ├── banner.rs            # startup banner + session summary
 ├── commands/            # Command trait + CommandRegistry + built-in /slash commands
 ├── config/              # SQLite key-value config (model preference, etc.)
@@ -103,6 +105,7 @@ src/
 ## Key abstractions
 
 - **`ProviderConfig`** — trait defining a provider's identity, auth, and thinker construction. Each provider (Anthropic, Google) implements it. The `Provider` and `LoginProvider` CLI enums dispatch to implementations via `config()`.
+- **`DebugMode`** — shared `Arc<AtomicBool>` toggle for raw LLM request/response logging. Enabled via `--debug` flag or `/debug` REPL command. Passed through to thinkers at construction time.
 - **`StateChange`** — enum for REPL state updates (`Auth`, `Model`). Commands return `CommandResult::StateChanged(StateChange::*)` and the REPL applies the change.
 - **`EventBus`** — `tokio::sync::broadcast` channel for decoupled notifications. Components subscribe via `bus.subscribe()`.
 - **`SessionEntry`** — task + answer summary persisted across tasks. Loaded into `Context.session_history` so the LLM sees prior conversation.
