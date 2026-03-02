@@ -18,13 +18,10 @@ const DEVICE_CLIENT_SECRET: &str = "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";
 const AUTHORIZE_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const DEVICE_CODE_URL: &str = "https://oauth2.googleapis.com/device/code";
-/// Loopback flow scope — broad, works in browser-based authorization.
-const LOOPBACK_SCOPES: &str = "https://www.googleapis.com/auth/cloud-platform";
-
-/// Device code flow scope — Google blocks sensitive scopes (like cloud-platform)
-/// in device flow. The Gemini API's generateContent has no scope requirements,
-/// so any valid OAuth token works.
-const DEVICE_SCOPES: &str = "openid email";
+/// OAuth scopes for both flows. The Gemini API's generateContent has no scope
+/// requirements (confirmed via Google's discovery doc), so any valid OAuth
+/// token works. We request only the minimum needed for authentication.
+const SCOPES: &str = "openid email";
 
 /// 5-minute buffer (in ms) subtracted from token expiry.
 const EXPIRY_BUFFER_MS: u64 = 5 * 60 * 1000;
@@ -98,7 +95,7 @@ pub async fn prepare_authorize() -> Result<(AuthResult, TcpListener)> {
         ("client_id", CLIENT_ID),
         ("response_type", "code"),
         ("redirect_uri", redirect_uri.as_str()),
-        ("scope", LOOPBACK_SCOPES),
+        ("scope", SCOPES),
         ("code_challenge", pkce.challenge.as_str()),
         ("code_challenge_method", "S256"),
         ("access_type", "offline"),
@@ -312,7 +309,7 @@ struct DevicePollResponse {
 pub async fn device_code_authorize() -> Result<DeviceAuth> {
     let params = [
         ("client_id", DEVICE_CLIENT_ID),
-        ("scope", DEVICE_SCOPES),
+        ("scope", SCOPES),
     ];
 
     let client = reqwest::Client::new();
