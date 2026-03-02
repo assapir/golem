@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::auth::AuthStorage;
 use crate::consts::DEFAULT_MODEL;
 use crate::memory::MemoryEntry;
-use crate::prompts::build_react_system_prompt;
+use crate::prompts::build_react_system_prompt_with_session;
 use crate::tools::Outcome;
 
 use super::{
@@ -38,10 +38,15 @@ impl AnthropicThinker {
         let mut messages: Vec<Message> = Vec::new();
 
         // Prepend session history as prior task/answer pairs
-        for entry in &context.session_history {
+        for (i, entry) in context.session_history.iter().enumerate() {
             messages.push(Message {
                 role: "user".to_string(),
-                content: format!("Task: {}", entry.task),
+                content: format!(
+                    "[Prior task {}/{}] {}",
+                    i + 1,
+                    context.session_history.len(),
+                    entry.task
+                ),
             });
             messages.push(Message {
                 role: "assistant".to_string(),
@@ -265,7 +270,10 @@ impl Thinker for AnthropicThinker {
                 )
             })?;
 
-        let system = build_react_system_prompt(&context.available_tools);
+        let system = build_react_system_prompt_with_session(
+            &context.available_tools,
+            !context.session_history.is_empty(),
+        );
         let mut messages = Self::build_messages(context);
         let mut total_usage = TokenUsage::default();
 
