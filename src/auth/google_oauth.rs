@@ -11,7 +11,7 @@ const CLIENT_ID: &str = "701529528334-otljpqp2bjvhm7lp2eqktu5ja8uo05g6.apps.goog
 const CLIENT_SECRET: &str = "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";
 const AUTHORIZE_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
-const SCOPES: &str = "https://www.googleapis.com/auth/generative-language";
+const SCOPES: &str = "https://www.googleapis.com/auth/cloud-platform";
 
 /// 5-minute buffer (in ms) subtracted from token expiry.
 const EXPIRY_BUFFER_MS: u64 = 5 * 60 * 1000;
@@ -421,8 +421,8 @@ mod tests {
     #[test]
     fn urlencoded_encodes_slashes() {
         assert_eq!(
-            urlencoded("https://www.googleapis.com/auth/generative-language"),
-            "https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgenerative-language"
+            urlencoded("https://www.googleapis.com/auth/cloud-platform"),
+            "https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform"
         );
     }
 
