@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::auth::AuthStorage;
 use crate::auth::storage::ResolvedCredential;
+use crate::debug::DebugMode;
 use crate::memory::MemoryEntry;
 
 /// Default Gemini model when none is specified.
@@ -22,13 +23,15 @@ const API_BASE: &str = "https://generativelanguage.googleapis.com/v1beta";
 pub struct GeminiThinker {
     model: String,
     auth: AuthStorage,
+    debug: DebugMode,
 }
 
 impl GeminiThinker {
-    pub fn new(model: Option<String>, auth: AuthStorage) -> Self {
+    pub fn new(model: Option<String>, auth: AuthStorage, debug: DebugMode) -> Self {
         Self {
             model: model.unwrap_or_else(|| DEFAULT_MODEL.to_string()),
             auth,
+            debug,
         }
     }
 
@@ -166,15 +169,38 @@ impl GeminiThinker {
             }),
         };
 
+        self.debug.log(|| format!("→ POST {url}"));
+        self.debug.log(|| format!("→ model: {}", self.model));
+        self.debug.log(|| {
+            let preview: String = system.chars().take(200).collect();
+            format!("→ system: {preview}...")
+        });
+        self.debug.log(|| {
+            let total_chars: usize = contents
+                .iter()
+                .flat_map(|c| &c.parts)
+                .map(|p| p.text.len())
+                .sum();
+            format!(
+                "→ contents: {} messages, {} chars",
+                contents.len(),
+                total_chars
+            )
+        });
+
         let client = reqwest::Client::new();
         let req = client.post(&url).header("Content-Type", "application/json");
         let resp = apply_auth(req, credential).json(&body).send().await?;
+        let status = resp.status();
 
-        if !resp.status().is_success() {
-            let status = resp.status();
+        if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
+            self.debug.log(|| format!("← status: {status}"));
+            self.debug.log(|| format!("← error: {text}"));
             bail!("Gemini API error ({}): {}", status, text);
         }
+
+        self.debug.log(|| format!("← status: {status}"));
 
         let api_resp: ApiResponse = resp.json().await?;
 
@@ -194,6 +220,12 @@ impl GeminiThinker {
             input_tokens: u.prompt_token_count,
             output_tokens: u.candidates_token_count,
         });
+
+        if let Some(u) = &usage {
+            self.debug
+                .log(|| format!("← tokens: {} in / {} out", u.input_tokens, u.output_tokens));
+        }
+        self.debug.log(|| format!("← raw: {text}"));
 
         Ok(RawResponse { text, usage })
     }

@@ -5,6 +5,7 @@
 //! and dynamic help generation. Plugins can register additional commands
 //! at runtime via `registry.register(Arc::new(MyCommand))`.
 
+mod debug;
 mod help;
 mod login;
 mod logout;
@@ -18,6 +19,7 @@ mod whoami;
 use async_trait::async_trait;
 use std::sync::Arc;
 
+use crate::debug::DebugMode;
 use crate::engine::react::ReactEngine;
 use crate::thinker::TokenUsage;
 
@@ -32,6 +34,8 @@ pub struct SessionInfo<'a> {
     pub db_path: &'a str,
     /// Engine reference for commands that need provider access (e.g. `/model`).
     pub engine: Option<&'a ReactEngine>,
+    /// Shared debug mode toggle.
+    pub debug: DebugMode,
 }
 
 /// A state change the REPL needs to apply after a command runs.
@@ -89,6 +93,7 @@ impl CommandRegistry {
             Arc::new(tokens::TokensCommand),
             Arc::new(model::ModelCommand),
             Arc::new(new::NewCommand),
+            Arc::new(debug::DebugCommand),
             Arc::new(login::LoginCommand),
             Arc::new(logout::LogoutCommand),
             Arc::new(quit::QuitCommand),
@@ -190,6 +195,7 @@ mod tests {
             usage: TokenUsage::default(),
             db_path: ":memory:",
             engine: None,
+            debug: DebugMode::default(),
         }
     }
 
@@ -203,6 +209,7 @@ mod tests {
         assert!(names.contains(&"/tokens"));
         assert!(names.contains(&"/model"));
         assert!(names.contains(&"/new"));
+        assert!(names.contains(&"/debug"));
         assert!(names.contains(&"/login"));
         assert!(names.contains(&"/logout"));
         assert!(names.contains(&"/quit"));
