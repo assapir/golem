@@ -180,10 +180,7 @@ mod google_provider {
             let creds = google_oauth::poll_device_token(&auth).await?;
 
             let storage = AuthStorage::open(db_path)?;
-            storage.set(
-                self.id(),
-                Credential::OAuth(creds),
-            )?;
+            storage.set(self.id(), Credential::OAuth(creds))?;
 
             Ok(())
         }

@@ -12,7 +12,8 @@ const CLIENT_ID: &str = "701529528334-otljpqp2bjvhm7lp2eqktu5ja8uo05g6.apps.goog
 const CLIENT_SECRET: &str = "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";
 
 /// TV / Limited Input client (device code flow — works over SSH).
-const DEVICE_CLIENT_ID: &str = "701529528334-7buapusrvqo9ogqio29gd8i3ka96j3qg.apps.googleusercontent.com";
+const DEVICE_CLIENT_ID: &str =
+    "701529528334-7buapusrvqo9ogqio29gd8i3ka96j3qg.apps.googleusercontent.com";
 const DEVICE_CLIENT_SECRET: &str = "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";
 
 const AUTHORIZE_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -307,10 +308,7 @@ struct DevicePollResponse {
 /// Initiate the device code flow. Returns the user code and verification URL
 /// for display, plus the device code for polling.
 pub async fn device_code_authorize() -> Result<DeviceAuth> {
-    let params = [
-        ("client_id", DEVICE_CLIENT_ID),
-        ("scope", SCOPES),
-    ];
+    let params = [("client_id", DEVICE_CLIENT_ID), ("scope", SCOPES)];
 
     let client = reqwest::Client::new();
     let resp = client.post(DEVICE_CODE_URL).form(&params).send().await?;
@@ -342,8 +340,7 @@ pub struct DeviceAuth {
 
 /// Poll Google's token endpoint until the user approves (or the code expires).
 pub async fn poll_device_token(auth: &DeviceAuth) -> Result<OAuthCredentials> {
-    let deadline = std::time::Instant::now()
-        + std::time::Duration::from_secs(auth.expires_in);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(auth.expires_in);
     let mut interval = std::time::Duration::from_secs(auth.interval.max(5));
 
     let client = reqwest::Client::new();
@@ -375,14 +372,16 @@ pub async fn poll_device_token(auth: &DeviceAuth) -> Result<OAuthCredentials> {
             Some(err) => bail!("Google device auth failed: {err}"),
             None => {
                 // Success — tokens present
-                let access = data.access_token
+                let access = data
+                    .access_token
                     .ok_or_else(|| anyhow::anyhow!("missing access_token in device response"))?;
-                let refresh = data.refresh_token
-                    .ok_or_else(|| anyhow::anyhow!(
+                let refresh = data.refresh_token.ok_or_else(|| {
+                    anyhow::anyhow!(
                         "Google did not return a refresh token. \
                          Try revoking access at https://myaccount.google.com/permissions \
                          and logging in again."
-                    ))?;
+                    )
+                })?;
                 let expires_in = data.expires_in.unwrap_or(3600);
 
                 return Ok(OAuthCredentials {
