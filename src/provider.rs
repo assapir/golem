@@ -103,6 +103,7 @@ mod anthropic_provider {
 mod google_provider {
     use super::*;
     use crate::auth::google_oauth;
+    use crate::auth::storage::Credential;
     use crate::thinker::gemini::GeminiThinker;
 
     pub struct Google;
@@ -131,6 +132,17 @@ mod google_provider {
         }
 
         async fn login(&self, db_path: &str) -> Result<()> {
+            if google_oauth::is_headless() {
+                self.login_device_code(db_path).await
+            } else {
+                self.login_loopback(db_path).await
+            }
+        }
+    }
+
+    impl Google {
+        /// Loopback redirect flow — opens browser, Google redirects to localhost.
+        async fn login_loopback(&self, db_path: &str) -> Result<()> {
             let (auth_result, listener) = google_oauth::prepare_authorize().await?;
 
             let _ = open::that(&auth_result.url);
@@ -152,6 +164,27 @@ mod google_provider {
                 Some(auth_result.port),
             )
             .await?;
+            Ok(())
+        }
+
+        /// Device code flow — works over SSH / headless.
+        async fn login_device_code(&self, db_path: &str) -> Result<()> {
+            println!("Headless environment detected — using device code flow.\n");
+
+            let auth = google_oauth::device_code_authorize().await?;
+
+            println!("Go to: {}\n", auth.verification_url);
+            println!("Enter code: {}\n", auth.user_code);
+            println!("Waiting for approval...");
+
+            let creds = google_oauth::poll_device_token(&auth).await?;
+
+            let storage = AuthStorage::open(db_path)?;
+            storage.set(
+                self.id(),
+                Credential::OAuth(creds),
+            )?;
+
             Ok(())
         }
     }

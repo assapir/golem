@@ -7,11 +7,24 @@ use tokio::net::TcpListener;
 
 use super::oauth::OAuthCredentials;
 
+/// Desktop app client (loopback redirect flow).
 const CLIENT_ID: &str = "701529528334-otljpqp2bjvhm7lp2eqktu5ja8uo05g6.apps.googleusercontent.com";
 const CLIENT_SECRET: &str = "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";
+
+/// TV / Limited Input client (device code flow — works over SSH).
+const DEVICE_CLIENT_ID: &str = "701529528334-7buapusrvqo9ogqio29gd8i3ka96j3qg.apps.googleusercontent.com";
+const DEVICE_CLIENT_SECRET: &str = "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";
+
 const AUTHORIZE_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
-const SCOPES: &str = "https://www.googleapis.com/auth/cloud-platform";
+const DEVICE_CODE_URL: &str = "https://oauth2.googleapis.com/device/code";
+/// Loopback flow scope — broad, works in browser-based authorization.
+const LOOPBACK_SCOPES: &str = "https://www.googleapis.com/auth/cloud-platform";
+
+/// Device code flow scope — Google blocks sensitive scopes (like cloud-platform)
+/// in device flow. The Gemini API's generateContent has no scope requirements,
+/// so any valid OAuth token works.
+const DEVICE_SCOPES: &str = "openid email";
 
 /// 5-minute buffer (in ms) subtracted from token expiry.
 const EXPIRY_BUFFER_MS: u64 = 5 * 60 * 1000;
@@ -85,7 +98,7 @@ pub async fn prepare_authorize() -> Result<(AuthResult, TcpListener)> {
         ("client_id", CLIENT_ID),
         ("response_type", "code"),
         ("redirect_uri", redirect_uri.as_str()),
-        ("scope", SCOPES),
+        ("scope", LOOPBACK_SCOPES),
         ("code_challenge", pkce.challenge.as_str()),
         ("code_challenge_method", "S256"),
         ("access_type", "offline"),
@@ -221,15 +234,25 @@ pub async fn exchange_code(code: &str, verifier: &str, port: u16) -> Result<OAut
         access: data.access_token,
         refresh,
         expires: expiry_with_buffer(data.expires_in),
+        client_hint: None,
     })
 }
 
 /// Refresh an expired access token.
-pub async fn refresh_token(refresh: &str) -> Result<OAuthCredentials> {
+///
+/// `client_hint` selects which OAuth client to use:
+/// - `Some("device")` → TV / Limited Input client (device code flow)
+/// - anything else → Desktop client (loopback flow)
+pub async fn refresh_token(refresh: &str, client_hint: Option<&str>) -> Result<OAuthCredentials> {
+    let (cid, csecret) = match client_hint {
+        Some("device") => (DEVICE_CLIENT_ID, DEVICE_CLIENT_SECRET),
+        _ => (CLIENT_ID, CLIENT_SECRET),
+    };
+
     let params = [
         ("grant_type", "refresh_token"),
-        ("client_id", CLIENT_ID),
-        ("client_secret", CLIENT_SECRET),
+        ("client_id", cid),
+        ("client_secret", csecret),
         ("refresh_token", refresh),
     ];
 
@@ -248,6 +271,7 @@ pub async fn refresh_token(refresh: &str) -> Result<OAuthCredentials> {
         access: data.access_token,
         refresh: data.refresh_token.unwrap_or_else(|| refresh.to_string()),
         expires: expiry_with_buffer(data.expires_in),
+        client_hint: client_hint.map(String::from),
     })
 }
 
@@ -256,6 +280,138 @@ struct TokenResponse {
     access_token: String,
     refresh_token: Option<String>,
     expires_in: u64,
+}
+
+// ---------------------------------------------------------------------------
+// Device code flow (for SSH / headless environments)
+// ---------------------------------------------------------------------------
+
+/// Response from Google's device code endpoint.
+#[derive(serde::Deserialize)]
+struct DeviceCodeResponse {
+    device_code: String,
+    user_code: String,
+    verification_url: String,
+    expires_in: u64,
+    interval: u64,
+}
+
+/// Response while polling — may be a pending status or final tokens.
+#[derive(serde::Deserialize)]
+struct DevicePollResponse {
+    /// Present on error (e.g. "authorization_pending", "slow_down", "access_denied").
+    error: Option<String>,
+    /// Present on success.
+    access_token: Option<String>,
+    refresh_token: Option<String>,
+    expires_in: Option<u64>,
+}
+
+/// Initiate the device code flow. Returns the user code and verification URL
+/// for display, plus the device code for polling.
+pub async fn device_code_authorize() -> Result<DeviceAuth> {
+    let params = [
+        ("client_id", DEVICE_CLIENT_ID),
+        ("scope", DEVICE_SCOPES),
+    ];
+
+    let client = reqwest::Client::new();
+    let resp = client.post(DEVICE_CODE_URL).form(&params).send().await?;
+
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        bail!("Google device code request failed: {text}");
+    }
+
+    let data: DeviceCodeResponse = resp.json().await?;
+
+    Ok(DeviceAuth {
+        device_code: data.device_code,
+        user_code: data.user_code,
+        verification_url: data.verification_url,
+        expires_in: data.expires_in,
+        interval: data.interval,
+    })
+}
+
+/// Everything needed to complete the device code flow.
+pub struct DeviceAuth {
+    pub device_code: String,
+    pub user_code: String,
+    pub verification_url: String,
+    pub expires_in: u64,
+    pub interval: u64,
+}
+
+/// Poll Google's token endpoint until the user approves (or the code expires).
+pub async fn poll_device_token(auth: &DeviceAuth) -> Result<OAuthCredentials> {
+    let deadline = std::time::Instant::now()
+        + std::time::Duration::from_secs(auth.expires_in);
+    let mut interval = std::time::Duration::from_secs(auth.interval.max(5));
+
+    let client = reqwest::Client::new();
+
+    loop {
+        tokio::time::sleep(interval).await;
+
+        if std::time::Instant::now() > deadline {
+            bail!("device code expired — please try again");
+        }
+
+        let params = [
+            ("client_id", DEVICE_CLIENT_ID),
+            ("client_secret", DEVICE_CLIENT_SECRET),
+            ("device_code", auth.device_code.as_str()),
+            ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
+        ];
+
+        let resp = client.post(TOKEN_URL).form(&params).send().await?;
+        let data: DevicePollResponse = resp.json().await?;
+
+        match data.error.as_deref() {
+            Some("authorization_pending") => continue,
+            Some("slow_down") => {
+                // Back off by 5 seconds as required by Google
+                interval += std::time::Duration::from_secs(5);
+                continue;
+            }
+            Some(err) => bail!("Google device auth failed: {err}"),
+            None => {
+                // Success — tokens present
+                let access = data.access_token
+                    .ok_or_else(|| anyhow::anyhow!("missing access_token in device response"))?;
+                let refresh = data.refresh_token
+                    .ok_or_else(|| anyhow::anyhow!(
+                        "Google did not return a refresh token. \
+                         Try revoking access at https://myaccount.google.com/permissions \
+                         and logging in again."
+                    ))?;
+                let expires_in = data.expires_in.unwrap_or(3600);
+
+                return Ok(OAuthCredentials {
+                    access,
+                    refresh,
+                    expires: expiry_with_buffer(expires_in),
+                    client_hint: Some("device".into()),
+                });
+            }
+        }
+    }
+}
+
+/// Detect whether we're in a headless / SSH environment where loopback
+/// redirect won't work.
+pub fn is_headless() -> bool {
+    // SSH session — browser redirect to 127.0.0.1 on remote won't work
+    if std::env::var("SSH_CONNECTION").is_ok() || std::env::var("SSH_TTY").is_ok() {
+        return true;
+    }
+    // No display server on Linux
+    #[cfg(target_os = "linux")]
+    if std::env::var("DISPLAY").is_err() && std::env::var("WAYLAND_DISPLAY").is_err() {
+        return true;
+    }
+    false
 }
 
 /// Decode a percent-encoded string (e.g. `hello%20world` → `hello world`).
