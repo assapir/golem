@@ -152,6 +152,7 @@ fn build_provider_detects_oauth_credentials() {
                 access: "token".to_string(),
                 refresh: "refresh".to_string(),
                 expires: u64::MAX,
+                client_hint: None,
             }),
         )
         .unwrap();

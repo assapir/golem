@@ -108,7 +108,13 @@ impl AuthStorage {
                 Credential::OAuth(mut oauth) => {
                     if oauth.is_expired() {
                         let refreshed = match provider {
-                            "google" => super::google_oauth::refresh_token(&oauth.refresh).await?,
+                            "google" => {
+                                super::google_oauth::refresh_token(
+                                    &oauth.refresh,
+                                    oauth.client_hint.as_deref(),
+                                )
+                                .await?
+                            }
                             _ => super::oauth::refresh_token(&oauth.refresh).await?,
                         };
                         oauth = refreshed.clone();

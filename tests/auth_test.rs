@@ -42,6 +42,7 @@ fn set_and_get_oauth() {
         access: "access-token".to_string(),
         refresh: "refresh-token".to_string(),
         expires: 9999999999999,
+        client_hint: None,
     };
     storage.set("anthropic", Credential::OAuth(oauth)).unwrap();
 
@@ -190,6 +191,7 @@ async fn get_api_key_from_oauth_non_expired() {
         access: "sk-ant-oat01-valid".to_string(),
         refresh: "refresh".to_string(),
         expires: u64::MAX, // far future
+        client_hint: None,
     };
     storage.set("anthropic", Credential::OAuth(oauth)).unwrap();
 

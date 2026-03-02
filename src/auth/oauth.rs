@@ -16,6 +16,12 @@ pub struct OAuthCredentials {
     pub refresh: String,
     /// Expiration timestamp in milliseconds since epoch.
     pub expires: u64,
+    /// Optional hint identifying which OAuth client issued these tokens.
+    /// Used by providers with multiple OAuth clients to select the correct
+    /// client configuration during token refresh. `None` means the default
+    /// client configuration will be used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_hint: Option<String>,
 }
 
 impl OAuthCredentials {
@@ -114,6 +120,7 @@ pub async fn exchange_code(auth_code_raw: &str, verifier: &str) -> Result<OAuthC
         access: data.access_token,
         refresh: data.refresh_token,
         expires,
+        client_hint: None,
     })
 }
 
@@ -146,6 +153,7 @@ pub async fn refresh_token(refresh: &str) -> Result<OAuthCredentials> {
         access: data.access_token,
         refresh: data.refresh_token,
         expires,
+        client_hint: None,
     })
 }
 
@@ -289,6 +297,7 @@ mod tests {
             access: "token".to_string(),
             refresh: "refresh".to_string(),
             expires: now_ms() + 3_600_000, // 1 hour from now
+            client_hint: None,
         };
         assert!(!creds.is_expired());
     }
@@ -299,6 +308,7 @@ mod tests {
             access: "token".to_string(),
             refresh: "refresh".to_string(),
             expires: 1000, // epoch + 1 second
+            client_hint: None,
         };
         assert!(creds.is_expired());
     }
@@ -309,6 +319,7 @@ mod tests {
             access: "token".to_string(),
             refresh: "refresh".to_string(),
             expires: 0,
+            client_hint: None,
         };
         assert!(creds.is_expired());
     }
