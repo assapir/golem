@@ -1,3 +1,4 @@
+pub mod google_oauth;
 pub mod oauth;
 pub mod storage;
 
@@ -7,7 +8,7 @@ use anyhow::{Context, Result, bail};
 use storage::Credential;
 
 /// Providers that support OAuth login.
-const SUPPORTED_PROVIDERS: &[&str] = &["anthropic"];
+const SUPPORTED_PROVIDERS: &[&str] = &["anthropic", "google"];
 
 /// Complete OAuth login: exchange the authorization code and save credentials.
 ///
@@ -16,13 +17,27 @@ const SUPPORTED_PROVIDERS: &[&str] = &["anthropic"];
 ///
 /// Returns an error if the provider is not supported, the token exchange
 /// fails, or credentials cannot be saved.
-pub async fn login(db_path: &str, provider: &str, code: &str, verifier: &str) -> Result<()> {
+pub async fn login(
+    db_path: &str,
+    provider: &str,
+    code: &str,
+    verifier: &str,
+    port: Option<u16>,
+) -> Result<()> {
     if !SUPPORTED_PROVIDERS.contains(&provider) {
         bail!("unsupported provider: {provider}");
     }
-    let credentials = oauth::exchange_code(code, verifier)
-        .await
-        .context("token exchange failed")?;
+    let credentials = match provider {
+        "google" => {
+            let port = port.ok_or_else(|| anyhow::anyhow!("port required for Google login"))?;
+            google_oauth::exchange_code(code, verifier, port)
+                .await
+                .context("Google token exchange failed")?
+        }
+        _ => oauth::exchange_code(code, verifier)
+            .await
+            .context("token exchange failed")?,
+    };
     let storage = AuthStorage::open(db_path).context("failed to open auth storage")?;
     storage
         .set(provider, Credential::OAuth(credentials))

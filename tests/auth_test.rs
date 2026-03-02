@@ -322,7 +322,7 @@ fn authorize_url_is_unique_per_call() {
 
 #[tokio::test]
 async fn login_rejects_unsupported_provider() {
-    let err = auth::login(":memory:", "openai", "code", "verifier")
+    let err = auth::login(":memory:", "openai", "code", "verifier", None)
         .await
         .unwrap_err();
     assert!(
@@ -333,7 +333,7 @@ async fn login_rejects_unsupported_provider() {
 
 #[tokio::test]
 async fn login_rejects_empty_provider() {
-    let err = auth::login(":memory:", "", "code", "verifier")
+    let err = auth::login(":memory:", "", "code", "verifier", None)
         .await
         .unwrap_err();
     assert!(

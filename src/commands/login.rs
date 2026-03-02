@@ -1,8 +1,7 @@
 use async_trait::async_trait;
 
 use super::{Command, CommandResult, SessionInfo, StateChange};
-use crate::auth;
-use crate::auth::oauth;
+use crate::provider::provider_config_by_id;
 
 pub struct LoginCommand;
 
@@ -18,35 +17,17 @@ impl Command for LoginCommand {
 
     async fn execute(&self, info: &SessionInfo<'_>) -> CommandResult {
         let provider = info.provider;
-        println!("Logging in to {provider}...\n");
 
-        let (url, verifier) = oauth::build_authorize_url();
-        let _ = open::that(&url);
-
-        println!("Open this URL to authenticate:\n");
-        println!("  {url}\n");
-
-        print!("Paste the authorization code: ");
-        if std::io::Write::flush(&mut std::io::stdout()).is_err() {
+        let Some(config) = provider_config_by_id(provider) else {
+            eprintln!("  ✗ provider {provider} does not support login");
             return CommandResult::Handled;
-        }
+        };
 
-        let mut code = String::new();
-        if std::io::stdin().read_line(&mut code).is_err() {
-            eprintln!("  ✗ failed to read input");
-            return CommandResult::Handled;
-        }
-        let code = code.trim();
+        println!("Logging in to {}...\n", config.display_name());
 
-        if code.is_empty() {
-            eprintln!("  ✗ no authorization code provided");
-            return CommandResult::Handled;
-        }
-
-        println!("\nExchanging code for tokens...");
-        match auth::login(info.db_path, provider, code, &verifier).await {
+        match config.login(info.db_path).await {
             Ok(()) => {
-                println!("  ✓ logged in to {provider}");
+                println!("  ✓ logged in to {}", config.display_name());
                 CommandResult::StateChanged(StateChange::Auth("OAuth ✓".to_string()))
             }
             Err(e) => {

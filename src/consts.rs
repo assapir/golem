@@ -6,9 +6,6 @@ pub const AUTHOR: &str = env!("CARGO_PKG_AUTHORS");
 pub const HOMEPAGE: &str = env!("CARGO_PKG_HOMEPAGE");
 pub const REPO: &str = env!("CARGO_PKG_REPOSITORY");
 
-/// Default Anthropic model when none is specified.
-pub const DEFAULT_MODEL: &str = "claude-sonnet-4-20250514";
-
 /// Maximum number of prior task summaries to include in session context.
 pub const DEFAULT_SESSION_HISTORY_LIMIT: usize = 50;
 
@@ -43,7 +40,6 @@ mod tests {
         assert!(!AUTHOR.is_empty());
         assert!(!HOMEPAGE.is_empty());
         assert!(!REPO.is_empty());
-        assert!(!DEFAULT_MODEL.is_empty());
     }
 
     #[test]

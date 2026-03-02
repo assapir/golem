@@ -4,29 +4,19 @@ use std::time::Duration;
 
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand};
 use tokio::io::{AsyncBufReadExt, BufReader};
 
-use golem::auth::oauth;
-use golem::auth::storage::{AuthStorage, Credential};
 use golem::banner::{BannerInfo, print_banner, print_session_summary};
 use golem::commands::{CommandRegistry, CommandResult, SessionInfo, StateChange};
 use golem::config::Config;
-use golem::consts::{DEFAULT_MODEL, default_db_path};
+use golem::consts::default_db_path;
 use golem::engine::Engine;
 use golem::engine::react::{ReactConfig, ReactEngine};
 use golem::memory::sqlite::SqliteMemory;
-use golem::thinker::Thinker;
-use golem::thinker::anthropic::AnthropicThinker;
-use golem::thinker::human::HumanThinker;
+use golem::provider::{LoginProvider, Provider, build_provider, handle_login, handle_logout};
 use golem::tools::ToolRegistry;
 use golem::tools::shell::{ShellConfig, ShellMode, ShellTool};
-
-#[derive(Debug, Clone, ValueEnum)]
-enum Provider {
-    Human,
-    Anthropic,
-}
 
 #[derive(Parser)]
 #[command(name = "golem", version, about = "A clay body, animated by words.")]
@@ -87,11 +77,6 @@ enum Command {
     },
 }
 
-#[derive(Debug, Clone, ValueEnum)]
-enum LoginProvider {
-    Anthropic,
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
@@ -99,12 +84,8 @@ async fn main() -> anyhow::Result<()> {
     // Handle subcommands
     if let Some(command) = &cli.command {
         match command {
-            Command::Login { provider } => {
-                return handle_login(provider).await;
-            }
-            Command::Logout { provider } => {
-                return handle_logout(provider);
-            }
+            Command::Login { provider } => return handle_login(provider).await,
+            Command::Logout { provider } => return handle_logout(provider),
         }
     }
 
@@ -121,51 +102,11 @@ async fn main() -> anyhow::Result<()> {
         std::fs::create_dir_all(parent)?;
     }
 
-    // Wire up the thinker based on provider + model
-    let (thinker, provider_name, mut model_name, mut auth_status): (
-        Box<dyn Thinker>,
-        &str,
-        String,
-        String,
-    ) = match cli.provider {
-        Provider::Human => {
-            if cli.model.is_some() {
-                eprintln!("warning: --model is ignored for human provider");
-            }
-            (
-                Box::new(HumanThinker),
-                "human",
-                "—".to_string(),
-                "N/A".to_string(),
-            )
-        }
-        Provider::Anthropic => {
-            let auth = AuthStorage::open(&db_path)?;
-            let auth_status = match auth.get("anthropic")? {
-                Some(Credential::OAuth(_)) => "OAuth ✓".to_string(),
-                Some(Credential::ApiKey { .. }) => "API key ✓".to_string(),
-                None => {
-                    if std::env::var("ANTHROPIC_API_KEY")
-                        .map(|k| !k.is_empty())
-                        .unwrap_or(false)
-                    {
-                        "API key (env) ✓".to_string()
-                    } else {
-                        "not authenticated".to_string()
-                    }
-                }
-            };
-            // Model resolution: --model flag > config DB > default
-            let model = cli.model.clone().or_else(|| {
-                Config::open(&db_path)
-                    .ok()
-                    .and_then(|c| c.get("model").ok().flatten())
-            });
-            let thinker = Box::new(AnthropicThinker::new(model.clone(), auth));
-            let model_name = model.unwrap_or_else(|| DEFAULT_MODEL.to_string());
-            (thinker, "anthropic", model_name, auth_status)
-        }
-    };
+    // Wire up the provider
+    let setup = build_provider(&cli.provider, &db_path, cli.model.clone())?;
+    let provider_name = setup.name;
+    let mut model_name = setup.model;
+    let mut auth_status = setup.auth_status;
 
     let shell_mode = if cli.allow_write {
         ShellMode::ReadWrite
@@ -222,7 +163,7 @@ async fn main() -> anyhow::Result<()> {
         tool_timeout: Duration::from_secs(cli.timeout),
     };
 
-    let mut engine = ReactEngine::new(thinker, tools, memory, config);
+    let mut engine = ReactEngine::new(setup.thinker, tools, memory, config);
     let commands = CommandRegistry::new();
     let app_config = Config::open(&db_path)?;
 
@@ -319,59 +260,5 @@ async fn main() -> anyhow::Result<()> {
     }
 
     print_session_summary(engine.session_usage());
-    Ok(())
-}
-
-async fn handle_login(provider: &LoginProvider) -> anyhow::Result<()> {
-    let db_path = default_db_path();
-    let db_str = db_path.to_string_lossy();
-
-    if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-
-    let provider_name = match provider {
-        LoginProvider::Anthropic => "anthropic",
-    };
-
-    println!("Logging in to {provider_name} (Claude Pro/Max)...\n");
-
-    let (url, verifier) = oauth::build_authorize_url();
-    let _ = open::that(&url);
-
-    println!("Open this URL to authenticate:\n");
-    println!("  {url}\n");
-
-    print!("Paste the authorization code: ");
-    io::stdout().flush()?;
-    let mut code = String::new();
-    io::stdin().read_line(&mut code)?;
-    let code = code.trim();
-
-    if code.is_empty() {
-        anyhow::bail!("no authorization code provided");
-    }
-
-    println!("\nExchanging code for tokens...");
-    golem::auth::login(&db_str, provider_name, code, &verifier).await?;
-
-    println!("✓ Logged in to {provider_name} successfully!");
-    Ok(())
-}
-
-fn handle_logout(provider: &LoginProvider) -> anyhow::Result<()> {
-    let db_path = default_db_path();
-    let db_str = db_path.to_string_lossy();
-
-    if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-
-    let provider_name = match provider {
-        LoginProvider::Anthropic => "anthropic",
-    };
-
-    golem::auth::logout(&db_str, provider_name)?;
-    println!("✓ Logged out from {provider_name}.");
     Ok(())
 }
