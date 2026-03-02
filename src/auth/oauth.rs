@@ -16,9 +16,10 @@ pub struct OAuthCredentials {
     pub refresh: String,
     /// Expiration timestamp in milliseconds since epoch.
     pub expires: u64,
-    /// Which OAuth client issued these tokens (e.g. `"device"` for the device
-    /// code flow). Used to pick the correct client ID/secret during refresh.
-    /// `None` means the default (Desktop/loopback) client.
+    /// Optional hint identifying which OAuth client issued these tokens.
+    /// Used by providers with multiple OAuth clients to select the correct
+    /// client configuration during token refresh. `None` means the default
+    /// client configuration will be used.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_hint: Option<String>,
 }

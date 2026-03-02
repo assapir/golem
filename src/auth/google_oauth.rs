@@ -573,8 +573,8 @@ mod tests {
     #[test]
     fn urlencoded_encodes_slashes() {
         assert_eq!(
-            urlencoded("https://www.googleapis.com/auth/cloud-platform"),
-            "https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform"
+            urlencoded("https://example.com/foo/bar"),
+            "https%3A%2F%2Fexample.com%2Ffoo%2Fbar"
         );
     }
 
