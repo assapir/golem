@@ -3,8 +3,10 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::AuthStorage;
-use crate::consts::DEFAULT_MODEL;
 use crate::memory::MemoryEntry;
+
+/// Default Anthropic model when none is specified.
+const DEFAULT_MODEL: &str = "claude-sonnet-4-20250514";
 use crate::prompts::build_react_system_prompt_with_session;
 use crate::tools::Outcome;
 

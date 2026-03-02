@@ -1,4 +1,5 @@
 pub mod anthropic;
+pub mod gemini;
 pub mod human;
 pub mod mock;
 

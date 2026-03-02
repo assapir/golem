@@ -30,6 +30,7 @@ cargo fmt                      # CI enforces cargo fmt --check
 | Prompts | `src/prompts/react.rs` |
 | Constants | `src/consts.rs` |
 | Banner | `src/banner.rs` |
+| Provider wiring | `src/provider.rs` |
 
 ## Code style
 
@@ -38,40 +39,59 @@ cargo fmt                      # CI enforces cargo fmt --check
 - Use `env!("CARGO_PKG_VERSION")` and `env!("CARGO_PKG_*")` — never hardcode metadata.
 - `main.rs` imports from the library crate (`use golem::...`), not `mod` declarations.
 - Project constants go in `src/consts.rs`, display logic in `src/banner.rs`.
+- Default model constants belong in the thinker module that uses them, not in `consts.rs`.
 
 ## Module layout
 
 ```
 src/
-├── main.rs              # CLI, wiring, REPL
+├── main.rs              # CLI parsing + REPL loop (no provider logic)
 ├── lib.rs               # re-exports
+├── provider.rs          # ProviderConfig trait, provider impls, build/login/logout
 ├── banner.rs            # startup banner + session summary
 ├── commands/            # Command trait + CommandRegistry + built-in /slash commands
 ├── config/              # SQLite key-value config (model preference, etc.)
 ├── consts.rs            # project-wide constants (from Cargo.toml metadata)
-├── auth/                # OAuth PKCE flow + credential storage (SQLite)
+├── auth/                # OAuth PKCE flows + credential storage (SQLite)
+│   ├── mod.rs           # login/logout routing
+│   ├── oauth.rs         # Anthropic OAuth PKCE
+│   ├── google_oauth.rs  # Google OAuth PKCE (loopback redirect)
+│   └── storage.rs       # AuthStorage (SQLite credentials table)
 ├── engine/              # Engine trait + ReactEngine (ReAct loop)
 ├── events.rs            # EventBus (tokio broadcast) for decoupled communication
 ├── prompts/             # shared ReAct system prompt builder
-├── thinker/             # Thinker trait + providers (anthropic, human, mock)
+├── thinker/             # Thinker trait + providers
+│   ├── mod.rs           # Thinker trait, Step, parse_response
+│   ├── anthropic.rs     # Anthropic Messages API
+│   ├── gemini.rs        # Google Gemini generateContent API
+│   ├── human.rs         # Human-in-the-loop thinker
+│   └── mock.rs          # MockThinker for tests
 ├── tools/               # Tool trait + ToolRegistry + ShellTool
-└── memory/              # Memory trait + SqliteMemory (task + session memory)
+├── memory/              # Memory trait + SqliteMemory (task + session memory)
+└── spinner.rs           # Thinking spinner during LLM calls
 ```
+
+## Adding a new provider
+
+1. Create `src/thinker/my_provider.rs`, implement `Thinker` trait:
+   - Use `build_react_system_prompt()` from `src/prompts/react.rs` — don't duplicate.
+   - Return `StepResult { step, usage: Option<TokenUsage> }` from `next_step()`.
+   - Implement `models()`, `model()`, `set_model()` for model selection support.
+   - Own the default model as a `const` in the module.
+2. If the provider needs OAuth, create `src/auth/my_oauth.rs` with the flow.
+3. In `src/provider.rs`:
+   - Add a module implementing `ProviderConfig` (5 methods: `id`, `display_name`, `env_var`, `build_thinker`, `login`).
+   - Add variants to `Provider` and `LoginProvider` enums.
+   - Add a match arm in `Provider::config()`, `LoginProvider::config()`, and `provider_config_by_id()`.
+4. Register the thinker module in `src/thinker/mod.rs`.
+5. Add the provider to `SUPPORTED_PROVIDERS` in `src/auth/mod.rs` if it has OAuth.
+6. Test with `MockThinker` in `tests/react_test.rs`.
 
 ## Adding a new tool
 
 1. Create `src/tools/my_tool.rs`, implement `Tool` trait (`Send + Sync + async`).
 2. Register in `main.rs`: `tools.register(Arc::new(MyTool)).await;`
 3. Add tests in `tests/tools_test.rs`.
-
-## Adding a new provider
-
-1. Create `src/thinker/my_provider.rs`, implement `Thinker` trait.
-2. Use `build_react_system_prompt()` from `src/prompts/react.rs` — don't duplicate.
-3. Return `StepResult { step, usage: Option<TokenUsage> }` from `next_step()`.
-4. Implement `models()`, `model()`, `set_model()` for model selection support.
-5. Add `Provider` enum variant + match arm in `main.rs`.
-6. Test with `MockThinker` in `tests/react_test.rs`.
 
 ## Adding a new command
 
@@ -82,6 +102,7 @@ src/
 
 ## Key abstractions
 
+- **`ProviderConfig`** — trait defining a provider's identity, auth, and thinker construction. Each provider (Anthropic, Google) implements it. The `Provider` and `LoginProvider` CLI enums dispatch to implementations via `config()`.
 - **`StateChange`** — enum for REPL state updates (`Auth`, `Model`). Commands return `CommandResult::StateChanged(StateChange::*)` and the REPL applies the change.
 - **`EventBus`** — `tokio::sync::broadcast` channel for decoupled notifications. Components subscribe via `bus.subscribe()`.
 - **`SessionEntry`** — task + answer summary persisted across tasks. Loaded into `Context.session_history` so the LLM sees prior conversation.

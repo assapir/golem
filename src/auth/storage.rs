@@ -15,6 +15,15 @@ pub enum Credential {
     ApiKey { key: String },
 }
 
+/// A resolved credential ready for use in API calls.
+#[derive(Debug, Clone)]
+pub struct ResolvedCredential {
+    /// The token or API key string.
+    pub token: String,
+    /// Whether this is an OAuth access token (true) or an API key (false).
+    pub is_oauth: bool,
+}
+
 /// Manages credential storage in SQLite.
 ///
 /// Shares a database with memory and config — pass the same connection
@@ -76,16 +85,39 @@ impl AuthStorage {
     /// Get the API key for a provider, handling OAuth token refresh.
     /// Priority: stored OAuth → stored API key → environment variable.
     pub async fn get_api_key(&self, provider: &str, env_var: &str) -> Result<Option<String>> {
+        self.get_credential(provider, env_var)
+            .await
+            .map(|opt| opt.map(|r| r.token))
+    }
+
+    /// Get the resolved credential for a provider, including its type.
+    /// Priority: stored OAuth → stored API key → environment variable.
+    pub async fn get_credential(
+        &self,
+        provider: &str,
+        env_var: &str,
+    ) -> Result<Option<ResolvedCredential>> {
         if let Some(cred) = self.get(provider)? {
             match cred {
-                Credential::ApiKey { key } => return Ok(Some(key)),
+                Credential::ApiKey { key } => {
+                    return Ok(Some(ResolvedCredential {
+                        token: key,
+                        is_oauth: false,
+                    }));
+                }
                 Credential::OAuth(mut oauth) => {
                     if oauth.is_expired() {
-                        let refreshed = super::oauth::refresh_token(&oauth.refresh).await?;
+                        let refreshed = match provider {
+                            "google" => super::google_oauth::refresh_token(&oauth.refresh).await?,
+                            _ => super::oauth::refresh_token(&oauth.refresh).await?,
+                        };
                         oauth = refreshed.clone();
                         self.set(provider, Credential::OAuth(refreshed))?;
                     }
-                    return Ok(Some(oauth.access));
+                    return Ok(Some(ResolvedCredential {
+                        token: oauth.access,
+                        is_oauth: true,
+                    }));
                 }
             }
         }
@@ -94,7 +126,10 @@ impl AuthStorage {
         if let Ok(key) = std::env::var(env_var)
             && !key.is_empty()
         {
-            return Ok(Some(key));
+            return Ok(Some(ResolvedCredential {
+                token: key,
+                is_oauth: false,
+            }));
         }
 
         Ok(None)

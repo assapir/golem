@@ -1,8 +1,12 @@
+<p align="center">
+  <img src="assets/logo.svg" width="200" alt="Golem logo — a clay head with אמת (emet) on its forehead" />
+</p>
+
 # Golem
 
 A clay body, animated by words.
 
-Golem is a minimal AI agent harness built in Rust. It has no model of its own — it borrows its intelligence from whatever you plug in: a human at a keyboard, a local LLM, or a cloud API.
+Golem is a minimal AI agent harness built in Rust. It has no model of its own — it borrows its intelligence from whatever you plug in: a human at a keyboard, or a cloud API (Anthropic, Google Gemini).
 
 Built as a learning project to explore ReAct, tool calling, and memory from scratch.
 
@@ -13,6 +17,16 @@ You give a task → Thinker reasons → Tools execute → Observations fed back 
 ```
 
 This is the [ReAct](https://arxiv.org/abs/2210.03629) pattern: **Re**ason + **Act** in a loop until the task is done.
+
+## Providers
+
+| Provider | Auth | Default model | Status |
+|----------|------|---------------|--------|
+| **Anthropic** | OAuth (Claude Pro/Max) or `ANTHROPIC_API_KEY` | `claude-sonnet-4-20250514` | ✅ |
+| **Google Gemini** | OAuth or `GEMINI_API_KEY` | `gemini-3-flash-preview` | ✅ |
+| **Human** | None | — | ✅ |
+
+Adding a new provider: implement the `ProviderConfig` trait (5 methods) + `Thinker` trait. See [AGENTS.md](AGENTS.md).
 
 ## Install
 
@@ -52,18 +66,17 @@ cargo build --release
 # Log in to Anthropic (opens browser for OAuth)
 golem login
 
-# Interactive mode
+# Log in to Google Gemini (opens browser, auto-captures callback)
+golem login google
+
+# Interactive mode (default: Anthropic)
 golem
+
+# Use Gemini
+golem --provider google
 
 # Single task
 golem -r "list files in the current directory"
-
-# golem v0.2.0 — a clay body, animated by words
-#
-# golem> list files in the current directory
-# Thought: I need to list the files...
-# Action: shell:ls -la
-# [shell] ✓ ...
 ```
 
 ## CLI
@@ -77,9 +90,9 @@ Commands:
   help    Print this message or the help of the given subcommand(s)
 
 Options:
-  -p, --provider <PROVIDER>    LLM provider [default: anthropic] [possible values: human, anthropic]
+  -p, --provider <PROVIDER>    LLM provider [default: anthropic] [possible values: human, anthropic, google]
       --model <MODEL>          Model name (provider-specific, ignored for human)
-  -d, --db <DB>                SQLite database path [default: golem.db]
+  -d, --db <DB>                SQLite database path [default: ~/.golem/golem.db]
   -m, --max-iterations <N>     Max ReAct loop iterations [default: 20]
   -t, --timeout <SECONDS>      Tool execution timeout [default: 30]
       --allow-write            Allow write operations in shell (default: read-only)
@@ -126,8 +139,9 @@ Session history persists across restarts. Use `/new` to clear it and start fresh
 
 Everything is a trait. Everything is swappable.
 
+- **`ProviderConfig`** — defines a provider's identity, auth flow, and thinker construction
 - **`Engine`** — the outermost boundary (`fn run(task) -> answer`)
-- **`Thinker`** — the brain (human, Anthropic, mock — picked via `--provider`)
+- **`Thinker`** — the brain (Anthropic, Gemini, human, mock — picked via `--provider`)
 - **`Tool`** — something the agent can do (shell commands, more coming)
 - **`Command`** — built-in REPL commands (`/help`, `/model`, `/new`, etc.)
 - **`Memory`** — what the agent remembers (task iterations + session history, SQLite-backed)
