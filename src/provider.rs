@@ -158,13 +158,12 @@ mod google_provider {
 }
 
 /// Look up a `ProviderConfig` by its string identifier (e.g. `"anthropic"`, `"google"`).
-/// Used by REPL commands that only have the provider name as a string.
+/// Derived from `Provider::value_variants()` — no separate hardcoded match needed.
 pub fn provider_config_by_id(id: &str) -> Option<Box<dyn ProviderConfig>> {
-    match id {
-        "anthropic" => Some(Box::new(anthropic_provider::Anthropic)),
-        "google" => Some(Box::new(google_provider::Google)),
-        _ => None,
-    }
+    Provider::value_variants()
+        .iter()
+        .filter_map(|p| p.config())
+        .find(|c| c.id() == id)
 }
 
 /// Return all providers that support login, for the `/login` menu.

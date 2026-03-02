@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use tokio::io::AsyncBufReadExt;
 
 use super::{Command, CommandResult, SessionInfo, StateChange};
+use crate::commands::parse_menu_choice;
 use crate::provider::all_login_providers;
 
 pub struct LoginCommand;
@@ -48,9 +49,9 @@ impl Command for LoginCommand {
             return CommandResult::Handled;
         }
 
-        let choice: usize = match input.parse() {
-            Ok(n) if n >= 1 && n <= providers.len() => n,
-            _ => {
+        let choice = match parse_menu_choice(&input, providers.len()) {
+            Some(n) => n,
+            None => {
                 eprintln!("  ✗ invalid selection: {input}");
                 return CommandResult::Handled;
             }

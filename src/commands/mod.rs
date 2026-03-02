@@ -173,6 +173,14 @@ impl Default for CommandRegistry {
     }
 }
 
+/// Parse a 1-based menu selection from user input.
+/// Returns `Some(n)` if `input` is a valid integer in `1..=max`,
+/// or `None` for anything else (empty, non-numeric, out of range).
+pub fn parse_menu_choice(input: &str, max: usize) -> Option<usize> {
+    let n: usize = input.parse().ok()?;
+    if n >= 1 && n <= max { Some(n) } else { None }
+}
+
 fn format_label(name: &str, aliases: &[&str]) -> String {
     if aliases.is_empty() {
         name.to_string()
@@ -328,5 +336,40 @@ mod tests {
     #[test]
     fn format_label_with_aliases() {
         assert_eq!(format_label("/help", &["/h", "/?"]), "/help (/h, /?)");
+    }
+
+    // ── parse_menu_choice ─────────────────────────────────────────
+
+    #[test]
+    fn parse_menu_choice_valid() {
+        assert_eq!(parse_menu_choice("1", 3), Some(1));
+        assert_eq!(parse_menu_choice("2", 3), Some(2));
+        assert_eq!(parse_menu_choice("3", 3), Some(3));
+    }
+
+    #[test]
+    fn parse_menu_choice_out_of_range() {
+        assert_eq!(parse_menu_choice("0", 3), None);
+        assert_eq!(parse_menu_choice("4", 3), None);
+        assert_eq!(parse_menu_choice("100", 2), None);
+    }
+
+    #[test]
+    fn parse_menu_choice_non_numeric() {
+        assert_eq!(parse_menu_choice("abc", 3), None);
+        assert_eq!(parse_menu_choice("1a", 3), None);
+        assert_eq!(parse_menu_choice("", 3), None);
+    }
+
+    #[test]
+    fn parse_menu_choice_negative() {
+        // usize parse rejects negative numbers
+        assert_eq!(parse_menu_choice("-1", 3), None);
+    }
+
+    #[test]
+    fn parse_menu_choice_max_one() {
+        assert_eq!(parse_menu_choice("1", 1), Some(1));
+        assert_eq!(parse_menu_choice("2", 1), None);
     }
 }
