@@ -317,3 +317,100 @@ pub fn handle_logout(provider: &LoginProvider) -> Result<()> {
     println!("✓ Logged out from {}.", config.display_name());
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn all_login_providers_is_non_empty() {
+        let providers = all_login_providers();
+        assert!(!providers.is_empty());
+    }
+
+    #[test]
+    fn all_login_providers_excludes_human() {
+        let providers = all_login_providers();
+        for p in &providers {
+            assert_ne!(
+                p.id(),
+                "human",
+                "human provider should not appear in login list"
+            );
+        }
+    }
+
+    #[test]
+    fn all_login_providers_includes_anthropic_and_google() {
+        let providers = all_login_providers();
+        let ids: Vec<&str> = providers.iter().map(|p| p.id()).collect();
+        assert!(ids.contains(&"anthropic"), "missing anthropic");
+        assert!(ids.contains(&"google"), "missing google");
+    }
+
+    #[test]
+    fn all_login_providers_have_display_names() {
+        for p in all_login_providers() {
+            assert!(
+                !p.display_name().is_empty(),
+                "provider {} has empty display name",
+                p.id()
+            );
+        }
+    }
+
+    #[test]
+    fn all_login_providers_have_env_vars() {
+        for p in all_login_providers() {
+            assert!(
+                !p.env_var().is_empty(),
+                "provider {} has empty env var",
+                p.id()
+            );
+        }
+    }
+
+    #[test]
+    fn all_login_providers_have_unique_ids() {
+        let providers = all_login_providers();
+        let mut ids: Vec<&str> = providers.iter().map(|p| p.id()).collect();
+        let len_before = ids.len();
+        ids.sort();
+        ids.dedup();
+        assert_eq!(ids.len(), len_before, "duplicate provider ids");
+    }
+
+    #[test]
+    fn all_login_providers_matches_provider_enum() {
+        // Every variant with a config() should appear in all_login_providers()
+        let login_ids: Vec<&str> = all_login_providers().iter().map(|p| p.id()).collect();
+        for variant in Provider::value_variants() {
+            if let Some(config) = variant.config() {
+                assert!(
+                    login_ids.contains(&config.id()),
+                    "Provider variant {:?} has a config but is missing from all_login_providers()",
+                    variant
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn provider_config_by_id_round_trips() {
+        for p in all_login_providers() {
+            let looked_up = provider_config_by_id(p.id());
+            assert!(
+                looked_up.is_some(),
+                "provider_config_by_id({}) returned None",
+                p.id()
+            );
+            assert_eq!(looked_up.unwrap().id(), p.id());
+        }
+    }
+
+    #[test]
+    fn provider_config_by_id_returns_none_for_unknown() {
+        assert!(provider_config_by_id("unknown").is_none());
+        assert!(provider_config_by_id("human").is_none());
+    }
+}
