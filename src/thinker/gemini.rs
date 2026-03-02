@@ -171,8 +171,10 @@ impl GeminiThinker {
 
         self.debug.log(|| format!("→ POST {url}"));
         self.debug.log(|| format!("→ model: {}", self.model));
-        self.debug
-            .log(|| format!("→ system: {}...", &system[..system.len().min(200)]));
+        self.debug.log(|| {
+            let preview: String = system.chars().take(200).collect();
+            format!("→ system: {preview}...")
+        });
         self.debug.log(|| {
             let total_chars: usize = contents
                 .iter()
@@ -180,7 +182,7 @@ impl GeminiThinker {
                 .map(|p| p.text.len())
                 .sum();
             format!(
-                "→ contents: {} parts, {} chars",
+                "→ contents: {} messages, {} chars",
                 contents.len(),
                 total_chars
             )

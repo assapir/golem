@@ -36,9 +36,16 @@ impl DebugMode {
 
     /// Print a debug message to stderr if debug mode is enabled.
     /// Takes a closure to avoid formatting when debug is off.
+    /// Each line is prefixed with `[debug]` so multi-line output stays identifiable.
     pub fn log(&self, msg: impl FnOnce() -> String) {
         if self.is_enabled() {
-            eprintln!("[debug] {}", msg());
+            for line in msg().split('\n') {
+                if line.is_empty() {
+                    eprintln!("[debug]");
+                } else {
+                    eprintln!("[debug] {line}");
+                }
+            }
         }
     }
 }

@@ -173,8 +173,10 @@ impl AnthropicThinker {
 
         self.debug.log(|| format!("→ POST {API_URL}"));
         self.debug.log(|| format!("→ model: {}", self.model));
-        self.debug
-            .log(|| format!("→ system: {}...", &system[..system.len().min(200)]));
+        self.debug.log(|| {
+            let preview: String = system.chars().take(200).collect();
+            format!("→ system: {preview}...")
+        });
         self.debug.log(|| {
             let total_chars: usize = messages.iter().map(|m| m.content.len()).sum();
             format!(
