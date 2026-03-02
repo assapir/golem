@@ -3,6 +3,7 @@ pub mod banner;
 pub mod commands;
 pub mod config;
 pub mod consts;
+pub mod debug;
 pub mod engine;
 pub mod events;
 pub mod memory;

@@ -11,6 +11,7 @@ use golem::banner::{BannerInfo, print_banner, print_session_summary};
 use golem::commands::{CommandRegistry, CommandResult, SessionInfo, StateChange};
 use golem::config::Config;
 use golem::consts::default_db_path;
+use golem::debug::DebugMode;
 use golem::engine::Engine;
 use golem::engine::react::{ReactConfig, ReactEngine};
 use golem::memory::sqlite::SqliteMemory;
@@ -59,6 +60,10 @@ struct Cli {
     /// Run a single task and exit (non-interactive)
     #[arg(short, long)]
     run: Option<String>,
+
+    /// Show raw LLM request/response data
+    #[arg(long, default_value_t = false)]
+    debug: bool,
 }
 
 #[derive(Subcommand)]
@@ -102,8 +107,9 @@ async fn main() -> anyhow::Result<()> {
         std::fs::create_dir_all(parent)?;
     }
 
-    // Wire up the provider
-    let setup = build_provider(&cli.provider, &db_path, cli.model.clone())?;
+    // Wire up debug mode and provider
+    let debug = DebugMode::new(cli.debug);
+    let setup = build_provider(&cli.provider, &db_path, cli.model.clone(), debug.clone())?;
     let provider_name = setup.name;
     let mut model_name = setup.model;
     let mut auth_status = setup.auth_status;
@@ -223,6 +229,7 @@ async fn main() -> anyhow::Result<()> {
             usage: engine.session_usage(),
             db_path: &db_path,
             engine: Some(&engine),
+            debug: debug.clone(),
         };
 
         // Wrap command dispatch with Ctrl+C so interactive commands

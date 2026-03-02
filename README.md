@@ -77,6 +77,9 @@ golem --provider google
 
 # Single task
 golem -r "list files in the current directory"
+
+# Debug mode — see raw LLM requests and responses
+golem --debug
 ```
 
 ## CLI
@@ -99,6 +102,7 @@ Options:
   -w, --work-dir <PATH>        Working directory for shell commands
       --no-confirm             Skip confirmation prompts before executing commands
   -r, --run <TASK>             Run a single task and exit
+      --debug                  Show raw LLM request/response data
   -h, --help                   Print help
   -V, --version                Print version
 ```
@@ -115,6 +119,7 @@ Type `/help` at the prompt to see all available commands:
 | `/tokens` | | Show session token usage |
 | `/model` | | List and switch the active model |
 | `/new` | | Start a new session (clear conversation history) |
+| `/debug` | | Toggle debug mode (show raw LLM request/response data) |
 | `/login` | | Log in to the current provider |
 | `/logout` | | Log out from the current provider |
 | `/quit` | `quit`, `exit`, `/exit` | Exit the REPL |

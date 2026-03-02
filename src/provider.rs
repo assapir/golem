@@ -9,6 +9,7 @@ use clap::ValueEnum;
 use crate::auth::storage::{AuthStorage, Credential};
 use crate::config::Config;
 use crate::consts::default_db_path;
+use crate::debug::DebugMode;
 use crate::thinker::Thinker;
 
 // --- Provider trait ---
@@ -26,7 +27,12 @@ pub trait ProviderConfig: Send + Sync {
     fn env_var(&self) -> &'static str;
 
     /// Build the thinker for this provider.
-    fn build_thinker(&self, model: Option<String>, auth: AuthStorage) -> Box<dyn Thinker>;
+    fn build_thinker(
+        &self,
+        model: Option<String>,
+        auth: AuthStorage,
+        debug: DebugMode,
+    ) -> Box<dyn Thinker>;
 
     /// Run the interactive login flow, storing credentials in `db_path`.
     async fn login(&self, db_path: &str) -> Result<()>;
@@ -56,8 +62,13 @@ mod anthropic_provider {
             "ANTHROPIC_API_KEY"
         }
 
-        fn build_thinker(&self, model: Option<String>, auth: AuthStorage) -> Box<dyn Thinker> {
-            Box::new(AnthropicThinker::new(model, auth))
+        fn build_thinker(
+            &self,
+            model: Option<String>,
+            auth: AuthStorage,
+            debug: DebugMode,
+        ) -> Box<dyn Thinker> {
+            Box::new(AnthropicThinker::new(model, auth, debug))
         }
 
         async fn login(&self, db_path: &str) -> Result<()> {
@@ -110,8 +121,13 @@ mod google_provider {
             "GEMINI_API_KEY"
         }
 
-        fn build_thinker(&self, model: Option<String>, auth: AuthStorage) -> Box<dyn Thinker> {
-            Box::new(GeminiThinker::new(model, auth))
+        fn build_thinker(
+            &self,
+            model: Option<String>,
+            auth: AuthStorage,
+            debug: DebugMode,
+        ) -> Box<dyn Thinker> {
+            Box::new(GeminiThinker::new(model, auth, debug))
         }
 
         async fn login(&self, db_path: &str) -> Result<()> {
@@ -240,6 +256,7 @@ pub fn build_provider(
     provider: &Provider,
     db_path: &str,
     cli_model: Option<String>,
+    debug: DebugMode,
 ) -> Result<ProviderSetup> {
     let Some(config) = provider.config() else {
         // Human provider — no auth, no model
@@ -257,7 +274,7 @@ pub fn build_provider(
     let auth = AuthStorage::open(db_path)?;
     let auth_status = check_auth_status(&auth, config.as_ref());
     let model = resolve_model(cli_model, db_path);
-    let thinker = config.build_thinker(model, auth);
+    let thinker = config.build_thinker(model, auth, debug);
     let display = thinker.model().to_string();
 
     Ok(ProviderSetup {
