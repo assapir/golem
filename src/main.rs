@@ -224,7 +224,18 @@ async fn main() -> anyhow::Result<()> {
             db_path: &db_path,
             engine: Some(&engine),
         };
-        match commands.dispatch(task, &session_info).await {
+
+        // Wrap command dispatch with Ctrl+C so interactive commands
+        // (like /login waiting for OAuth) can be cancelled.
+        let cmd_result = tokio::select! {
+            result = commands.dispatch(task, &session_info) => result,
+            _ = tokio::signal::ctrl_c() => {
+                println!("\n\n  interrupted");
+                CommandResult::Handled
+            }
+        };
+
+        match cmd_result {
             CommandResult::Handled => continue,
             CommandResult::StateChanged(change) => {
                 match change {

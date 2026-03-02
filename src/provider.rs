@@ -38,6 +38,7 @@ mod anthropic_provider {
     use super::*;
     use crate::auth::oauth;
     use crate::thinker::anthropic::AnthropicThinker;
+    use tokio::io::AsyncBufReadExt;
 
     pub struct Anthropic;
 
@@ -68,16 +69,21 @@ mod anthropic_provider {
 
             print!("Paste the authorization code: ");
             io::stdout().flush()?;
-            let mut code = String::new();
-            io::stdin().read_line(&mut code)?;
-            let code = code.trim();
+
+            let stdin = tokio::io::BufReader::new(tokio::io::stdin());
+            let mut lines = stdin.lines();
+            let code = match lines.next_line().await? {
+                Some(line) => line,
+                None => anyhow::bail!("no authorization code provided"),
+            };
+            let code = code.trim().to_string();
 
             if code.is_empty() {
                 anyhow::bail!("no authorization code provided");
             }
 
             println!("\nExchanging code for tokens...");
-            crate::auth::login(db_path, self.id(), code, &verifier, None).await?;
+            crate::auth::login(db_path, self.id(), &code, &verifier, None).await?;
             Ok(())
         }
     }
@@ -143,6 +149,14 @@ pub fn provider_config_by_id(id: &str) -> Option<Box<dyn ProviderConfig>> {
         "google" => Some(Box::new(google_provider::Google)),
         _ => None,
     }
+}
+
+/// Return all providers that support login, for the `/login` menu.
+pub fn all_login_providers() -> Vec<Box<dyn ProviderConfig>> {
+    vec![
+        Box::new(anthropic_provider::Anthropic),
+        Box::new(google_provider::Google),
+    ]
 }
 
 // --- CLI enums ---
