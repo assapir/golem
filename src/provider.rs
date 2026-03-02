@@ -168,11 +168,13 @@ pub fn provider_config_by_id(id: &str) -> Option<Box<dyn ProviderConfig>> {
 }
 
 /// Return all providers that support login, for the `/login` menu.
+/// Derived from `Provider::value_variants()` — new providers added to
+/// the enum automatically appear here if they implement `ProviderConfig`.
 pub fn all_login_providers() -> Vec<Box<dyn ProviderConfig>> {
-    vec![
-        Box::new(anthropic_provider::Anthropic),
-        Box::new(google_provider::Google),
-    ]
+    Provider::value_variants()
+        .iter()
+        .filter_map(|p| p.config())
+        .collect()
 }
 
 // --- CLI enums ---
