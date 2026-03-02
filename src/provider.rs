@@ -44,6 +44,7 @@ mod anthropic_provider {
     use super::*;
     use crate::auth::oauth;
     use crate::thinker::anthropic::AnthropicThinker;
+    use tokio::io::AsyncBufReadExt;
 
     pub struct Anthropic;
 
@@ -79,16 +80,21 @@ mod anthropic_provider {
 
             print!("Paste the authorization code: ");
             io::stdout().flush()?;
-            let mut code = String::new();
-            io::stdin().read_line(&mut code)?;
-            let code = code.trim();
+
+            let stdin = tokio::io::BufReader::new(tokio::io::stdin());
+            let mut lines = stdin.lines();
+            let code = match lines.next_line().await? {
+                Some(line) => line,
+                None => anyhow::bail!("no authorization code provided"),
+            };
+            let code = code.trim().to_string();
 
             if code.is_empty() {
                 anyhow::bail!("no authorization code provided");
             }
 
             println!("\nExchanging code for tokens...");
-            crate::auth::login(db_path, self.id(), code, &verifier, None).await?;
+            crate::auth::login(db_path, self.id(), &code, &verifier, None).await?;
             Ok(())
         }
     }
@@ -152,13 +158,22 @@ mod google_provider {
 }
 
 /// Look up a `ProviderConfig` by its string identifier (e.g. `"anthropic"`, `"google"`).
-/// Used by REPL commands that only have the provider name as a string.
+/// Derived from `Provider::value_variants()` — no separate hardcoded match needed.
 pub fn provider_config_by_id(id: &str) -> Option<Box<dyn ProviderConfig>> {
-    match id {
-        "anthropic" => Some(Box::new(anthropic_provider::Anthropic)),
-        "google" => Some(Box::new(google_provider::Google)),
-        _ => None,
-    }
+    Provider::value_variants()
+        .iter()
+        .filter_map(|p| p.config())
+        .find(|c| c.id() == id)
+}
+
+/// Return all providers that support login, for the `/login` menu.
+/// Derived from `Provider::value_variants()` — new providers added to
+/// the enum automatically appear here if they implement `ProviderConfig`.
+pub fn all_login_providers() -> Vec<Box<dyn ProviderConfig>> {
+    Provider::value_variants()
+        .iter()
+        .filter_map(|p| p.config())
+        .collect()
 }
 
 // --- CLI enums ---
@@ -300,4 +315,101 @@ pub fn handle_logout(provider: &LoginProvider) -> Result<()> {
     crate::auth::logout(&db_str, config.id())?;
     println!("✓ Logged out from {}.", config.display_name());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn all_login_providers_is_non_empty() {
+        let providers = all_login_providers();
+        assert!(!providers.is_empty());
+    }
+
+    #[test]
+    fn all_login_providers_excludes_human() {
+        let providers = all_login_providers();
+        for p in &providers {
+            assert_ne!(
+                p.id(),
+                "human",
+                "human provider should not appear in login list"
+            );
+        }
+    }
+
+    #[test]
+    fn all_login_providers_includes_anthropic_and_google() {
+        let providers = all_login_providers();
+        let ids: Vec<&str> = providers.iter().map(|p| p.id()).collect();
+        assert!(ids.contains(&"anthropic"), "missing anthropic");
+        assert!(ids.contains(&"google"), "missing google");
+    }
+
+    #[test]
+    fn all_login_providers_have_display_names() {
+        for p in all_login_providers() {
+            assert!(
+                !p.display_name().is_empty(),
+                "provider {} has empty display name",
+                p.id()
+            );
+        }
+    }
+
+    #[test]
+    fn all_login_providers_have_env_vars() {
+        for p in all_login_providers() {
+            assert!(
+                !p.env_var().is_empty(),
+                "provider {} has empty env var",
+                p.id()
+            );
+        }
+    }
+
+    #[test]
+    fn all_login_providers_have_unique_ids() {
+        let providers = all_login_providers();
+        let mut ids: Vec<&str> = providers.iter().map(|p| p.id()).collect();
+        let len_before = ids.len();
+        ids.sort();
+        ids.dedup();
+        assert_eq!(ids.len(), len_before, "duplicate provider ids");
+    }
+
+    #[test]
+    fn all_login_providers_matches_provider_enum() {
+        // Every variant with a config() should appear in all_login_providers()
+        let login_ids: Vec<&str> = all_login_providers().iter().map(|p| p.id()).collect();
+        for variant in Provider::value_variants() {
+            if let Some(config) = variant.config() {
+                assert!(
+                    login_ids.contains(&config.id()),
+                    "Provider variant {:?} has a config but is missing from all_login_providers()",
+                    variant
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn provider_config_by_id_round_trips() {
+        for p in all_login_providers() {
+            let looked_up = provider_config_by_id(p.id());
+            assert!(
+                looked_up.is_some(),
+                "provider_config_by_id({}) returned None",
+                p.id()
+            );
+            assert_eq!(looked_up.unwrap().id(), p.id());
+        }
+    }
+
+    #[test]
+    fn provider_config_by_id_returns_none_for_unknown() {
+        assert!(provider_config_by_id("unknown").is_none());
+        assert!(provider_config_by_id("human").is_none());
+    }
 }

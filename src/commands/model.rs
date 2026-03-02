@@ -1,6 +1,8 @@
 use async_trait::async_trait;
+use tokio::io::AsyncBufReadExt;
 
 use super::{Command, CommandResult, SessionInfo, StateChange};
+use crate::commands::parse_menu_choice;
 
 pub struct ModelCommand;
 
@@ -61,12 +63,13 @@ impl Command for ModelCommand {
             return CommandResult::Handled;
         }
 
-        let mut input = String::new();
-        if std::io::stdin().read_line(&mut input).is_err() {
-            eprintln!("  ✗ failed to read input");
-            return CommandResult::Handled;
-        }
-        let input = input.trim();
+        let stdin = tokio::io::BufReader::new(tokio::io::stdin());
+        let mut lines = stdin.lines();
+        let input = match lines.next_line().await {
+            Ok(Some(line)) => line,
+            Ok(None) | Err(_) => return CommandResult::Handled,
+        };
+        let input = input.trim().to_string();
 
         // Empty input = keep current
         if input.is_empty() {
@@ -77,9 +80,9 @@ impl Command for ModelCommand {
             return CommandResult::Handled;
         }
 
-        let choice: usize = match input.parse() {
-            Ok(n) if n >= 1 && n <= models.len() => n,
-            _ => {
+        let choice = match parse_menu_choice(&input, models.len()) {
+            Some(n) => n,
+            None => {
                 eprintln!("  ✗ invalid selection: {input}");
                 return CommandResult::Handled;
             }
