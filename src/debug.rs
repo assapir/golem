@@ -35,9 +35,10 @@ impl DebugMode {
     }
 
     /// Print a debug message to stderr if debug mode is enabled.
-    pub fn log(&self, msg: &str) {
+    /// Takes a closure to avoid formatting when debug is off.
+    pub fn log(&self, msg: impl FnOnce() -> String) {
         if self.is_enabled() {
-            eprintln!("[debug] {msg}");
+            eprintln!("[debug] {}", msg());
         }
     }
 }

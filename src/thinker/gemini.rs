@@ -169,24 +169,22 @@ impl GeminiThinker {
             }),
         };
 
-        if self.debug.is_enabled() {
+        self.debug.log(|| format!("→ POST {url}"));
+        self.debug.log(|| format!("→ model: {}", self.model));
+        self.debug
+            .log(|| format!("→ system: {}...", &system[..system.len().min(200)]));
+        self.debug.log(|| {
             let total_chars: usize = contents
                 .iter()
                 .flat_map(|c| &c.parts)
                 .map(|p| p.text.len())
                 .sum();
-            self.debug.log(&format!("→ POST {url}"));
-            self.debug.log(&format!("→ model: {}", self.model));
-            self.debug.log(&format!(
-                "→ system: {}...",
-                &system[..system.len().min(200)]
-            ));
-            self.debug.log(&format!(
+            format!(
                 "→ contents: {} parts, {} chars",
                 contents.len(),
                 total_chars
-            ));
-        }
+            )
+        });
 
         let client = reqwest::Client::new();
         let req = client.post(&url).header("Content-Type", "application/json");
@@ -195,12 +193,12 @@ impl GeminiThinker {
 
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
-            self.debug.log(&format!("← status: {status}"));
-            self.debug.log(&format!("← error: {text}"));
+            self.debug.log(|| format!("← status: {status}"));
+            self.debug.log(|| format!("← error: {text}"));
             bail!("Gemini API error ({}): {}", status, text);
         }
 
-        self.debug.log(&format!("← status: {status}"));
+        self.debug.log(|| format!("← status: {status}"));
 
         let api_resp: ApiResponse = resp.json().await?;
 
@@ -221,15 +219,11 @@ impl GeminiThinker {
             output_tokens: u.candidates_token_count,
         });
 
-        if self.debug.is_enabled() {
-            if let Some(u) = &usage {
-                self.debug.log(&format!(
-                    "← tokens: {} in / {} out",
-                    u.input_tokens, u.output_tokens
-                ));
-            }
-            self.debug.log(&format!("← raw: {text}"));
+        if let Some(u) = &usage {
+            self.debug
+                .log(|| format!("← tokens: {} in / {} out", u.input_tokens, u.output_tokens));
         }
+        self.debug.log(|| format!("← raw: {text}"));
 
         Ok(RawResponse { text, usage })
     }
