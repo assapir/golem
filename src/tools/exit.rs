@@ -1,7 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::Tool;
@@ -11,25 +10,28 @@ use super::Tool;
 /// When the user says something like "bye" or "quit", the LLM can call this
 /// tool to signal a graceful shutdown. The caller checks [`ExitTool::triggered`]
 /// after each engine run to decide whether to break the loop.
+///
+/// Share via `Arc<ExitTool>` — the `AtomicBool` is stored inline; no inner
+/// `Arc` is needed.
 pub struct ExitTool {
-    flag: Arc<AtomicBool>,
+    flag: AtomicBool,
 }
 
 impl ExitTool {
     pub fn new() -> Self {
         Self {
-            flag: Arc::new(AtomicBool::new(false)),
+            flag: AtomicBool::new(false),
         }
     }
 
     /// Returns `true` if the tool was invoked (the agent wants to exit).
     pub fn triggered(&self) -> bool {
-        self.flag.load(Ordering::Relaxed)
+        self.flag.load(Ordering::Acquire)
     }
 
     /// Reset the flag (useful if the caller decides not to exit after all).
     pub fn reset(&self) {
-        self.flag.store(false, Ordering::Relaxed);
+        self.flag.store(false, Ordering::Release);
     }
 }
 
@@ -50,7 +52,7 @@ impl Tool for ExitTool {
     }
 
     async fn execute(&self, _args: &HashMap<String, String>) -> Result<String> {
-        self.flag.store(true, Ordering::Relaxed);
+        self.flag.store(true, Ordering::Release);
         Ok("Goodbye! Exiting session.".to_string())
     }
 }
