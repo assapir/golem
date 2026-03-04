@@ -35,14 +35,18 @@ impl Command for LogoutCommand {
     }
 }
 
-/// Find another provider that has stored credentials, skipping `exclude`.
+/// Find another provider that is authenticated (stored credentials or env var), skipping `exclude`.
 fn find_authenticated_provider(db_path: &str, exclude: &str) -> Option<String> {
     let storage = AuthStorage::open(db_path).ok()?;
     for config in all_login_providers() {
         if config.id() == exclude {
             continue;
         }
-        if storage.get(config.id()).ok().flatten().is_some() {
+        let has_stored = storage.get(config.id()).ok().flatten().is_some();
+        let has_env = std::env::var(config.env_var())
+            .map(|k| !k.is_empty())
+            .unwrap_or(false);
+        if has_stored || has_env {
             return Some(config.id().to_string());
         }
     }

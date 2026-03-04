@@ -281,6 +281,17 @@ pub fn all_provider_statuses(db_path: &str) -> Vec<ProviderStatus> {
         .collect()
 }
 
+/// Get the auth status string for a single provider (e.g. `"OAuth ✓"`, `"not authenticated"`).
+pub fn provider_auth_status(db_path: &str, provider_id: &str) -> String {
+    let Some(config) = provider_config_by_id(provider_id) else {
+        return "not authenticated".to_string();
+    };
+    let Ok(auth) = AuthStorage::open(db_path) else {
+        return "not authenticated".to_string();
+    };
+    check_auth_status(&auth, config.as_ref())
+}
+
 /// Returns true if the provider has stored credentials or an env var set.
 pub fn is_authenticated(db_path: &str, provider_id: &str) -> bool {
     let Some(config) = provider_config_by_id(provider_id) else {
@@ -519,6 +530,42 @@ mod tests {
             assert!(!status.display_name.is_empty());
             assert!(!status.auth_status.is_empty());
         }
+    }
+
+    #[test]
+    fn provider_auth_status_not_authenticated() {
+        assert_eq!(
+            provider_auth_status(":memory:", "anthropic"),
+            "not authenticated"
+        );
+    }
+
+    #[test]
+    fn provider_auth_status_with_credentials() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("auth-status.db");
+        let db_str = db_path.to_str().unwrap();
+
+        let storage = AuthStorage::open(db_str).unwrap();
+        storage
+            .set(
+                "anthropic",
+                Credential::ApiKey {
+                    key: "test".to_string(),
+                },
+            )
+            .unwrap();
+        drop(storage);
+
+        assert_eq!(provider_auth_status(db_str, "anthropic"), "API key ✓");
+    }
+
+    #[test]
+    fn provider_auth_status_unknown_provider() {
+        assert_eq!(
+            provider_auth_status(":memory:", "unknown"),
+            "not authenticated"
+        );
     }
 
     #[test]

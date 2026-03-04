@@ -271,8 +271,11 @@ async fn main() -> anyhow::Result<()> {
                             Ok(new_setup) => {
                                 engine.set_thinker(new_setup.thinker).await;
                                 provider_name = new_setup.name;
-                                model_name = new_setup.model;
+                                model_name = new_setup.model.clone();
                                 auth_status = new_setup.auth_status;
+                                if let Err(e) = app_config.set("model", &new_setup.model) {
+                                    eprintln!("  warning: failed to persist model preference: {e}");
+                                }
                             }
                             Err(e) => {
                                 eprintln!("  ✗ failed to switch provider: {e}");

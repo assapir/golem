@@ -3,7 +3,7 @@ use tokio::io::AsyncBufReadExt;
 
 use super::{Command, CommandResult, SessionInfo, StateChange};
 use crate::commands::parse_menu_choice;
-use crate::provider::all_login_providers;
+use crate::provider::{all_login_providers, provider_auth_status};
 
 pub struct LoginCommand;
 
@@ -64,8 +64,9 @@ impl Command for LoginCommand {
             Ok(()) => {
                 println!("  ✓ logged in to {}", config.display_name());
                 if config.id() == info.provider {
-                    // Same provider — just update auth status
-                    CommandResult::StateChanged(StateChange::Auth("OAuth ✓".to_string()))
+                    // Same provider — derive actual auth status from storage
+                    let status = provider_auth_status(info.db_path, config.id());
+                    CommandResult::StateChanged(StateChange::Auth(status))
                 } else {
                     // Different provider — switch to it (use its default model)
                     CommandResult::StateChanged(StateChange::Provider(

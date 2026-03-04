@@ -348,30 +348,14 @@ fn logout_one_provider_preserves_others() {
 
 #[test]
 fn build_provider_by_id_returns_anthropic() {
-    let had_key = std::env::var("ANTHROPIC_API_KEY").ok();
-    unsafe { std::env::remove_var("ANTHROPIC_API_KEY") };
-
     let setup = build_provider_by_id("anthropic", ":memory:", None, DebugMode::default()).unwrap();
-
-    if let Some(key) = had_key {
-        unsafe { std::env::set_var("ANTHROPIC_API_KEY", key) };
-    }
-
     assert_eq!(setup.name, "anthropic");
     assert!(!setup.model.is_empty());
 }
 
 #[test]
 fn build_provider_by_id_returns_google() {
-    let had_key = std::env::var("GEMINI_API_KEY").ok();
-    unsafe { std::env::remove_var("GEMINI_API_KEY") };
-
     let setup = build_provider_by_id("google", ":memory:", None, DebugMode::default()).unwrap();
-
-    if let Some(key) = had_key {
-        unsafe { std::env::set_var("GEMINI_API_KEY", key) };
-    }
-
     assert_eq!(setup.name, "google");
     assert!(!setup.model.is_empty());
 }
