@@ -28,7 +28,7 @@ impl Command for LogoutCommand {
         // Try to fall back to another authenticated provider
         if let Some(fallback_id) = find_authenticated_provider(info.db_path, provider) {
             println!("  → switching to {fallback_id}");
-            return CommandResult::StateChanged(StateChange::Provider(fallback_id));
+            return CommandResult::StateChanged(StateChange::Provider(fallback_id, None));
         }
 
         CommandResult::StateChanged(StateChange::Auth("not authenticated".to_string()))

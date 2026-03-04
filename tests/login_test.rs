@@ -351,7 +351,7 @@ fn build_provider_by_id_returns_anthropic() {
     let had_key = std::env::var("ANTHROPIC_API_KEY").ok();
     unsafe { std::env::remove_var("ANTHROPIC_API_KEY") };
 
-    let setup = build_provider_by_id("anthropic", ":memory:", DebugMode::default()).unwrap();
+    let setup = build_provider_by_id("anthropic", ":memory:", None, DebugMode::default()).unwrap();
 
     if let Some(key) = had_key {
         unsafe { std::env::set_var("ANTHROPIC_API_KEY", key) };
@@ -366,7 +366,7 @@ fn build_provider_by_id_returns_google() {
     let had_key = std::env::var("GEMINI_API_KEY").ok();
     unsafe { std::env::remove_var("GEMINI_API_KEY") };
 
-    let setup = build_provider_by_id("google", ":memory:", DebugMode::default()).unwrap();
+    let setup = build_provider_by_id("google", ":memory:", None, DebugMode::default()).unwrap();
 
     if let Some(key) = had_key {
         unsafe { std::env::set_var("GEMINI_API_KEY", key) };
@@ -378,7 +378,7 @@ fn build_provider_by_id_returns_google() {
 
 #[test]
 fn build_provider_by_id_unknown_returns_error() {
-    let result = build_provider_by_id("unknown", ":memory:", DebugMode::default());
+    let result = build_provider_by_id("unknown", ":memory:", None, DebugMode::default());
     assert!(result.is_err());
     let err = result.err().unwrap();
     assert!(err.to_string().contains("unknown"));
@@ -387,7 +387,7 @@ fn build_provider_by_id_unknown_returns_error() {
 #[test]
 fn build_provider_by_id_human_returns_error() {
     // "human" has no ProviderConfig, so it should fail
-    let result = build_provider_by_id("human", ":memory:", DebugMode::default());
+    let result = build_provider_by_id("human", ":memory:", None, DebugMode::default());
     assert!(result.is_err());
 }
 
@@ -403,7 +403,7 @@ fn build_provider_by_id_uses_default_model_not_config_db() {
     drop(config);
 
     // build_provider_by_id should ignore the config DB and use the provider's default
-    let setup = build_provider_by_id("anthropic", db_str, DebugMode::default()).unwrap();
+    let setup = build_provider_by_id("anthropic", db_str, None, DebugMode::default()).unwrap();
     assert_ne!(
         setup.model, "persisted-model",
         "build_provider_by_id should use provider default, not config DB"
@@ -430,6 +430,19 @@ fn build_provider_by_id_detects_auth_status() {
         .unwrap();
     drop(storage);
 
-    let setup = build_provider_by_id("google", db_str, DebugMode::default()).unwrap();
+    let setup = build_provider_by_id("google", db_str, None, DebugMode::default()).unwrap();
     assert_eq!(setup.auth_status, "OAuth ✓");
+}
+
+#[test]
+fn build_provider_by_id_with_model_override() {
+    let setup = build_provider_by_id(
+        "anthropic",
+        ":memory:",
+        Some("custom-model".to_string()),
+        DebugMode::default(),
+    )
+    .unwrap();
+    assert_eq!(setup.model, "custom-model");
+    assert_eq!(setup.name, "anthropic");
 }

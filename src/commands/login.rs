@@ -67,8 +67,11 @@ impl Command for LoginCommand {
                     // Same provider — just update auth status
                     CommandResult::StateChanged(StateChange::Auth("OAuth ✓".to_string()))
                 } else {
-                    // Different provider — switch to it
-                    CommandResult::StateChanged(StateChange::Provider(config.id().to_string()))
+                    // Different provider — switch to it (use its default model)
+                    CommandResult::StateChanged(StateChange::Provider(
+                        config.id().to_string(),
+                        None,
+                    ))
                 }
             }
             Err(e) => {

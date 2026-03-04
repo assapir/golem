@@ -3,13 +3,21 @@
 use std::path::Path;
 
 use crate::consts::{AUTHOR, HOMEPAGE, REPO, format_number};
+use crate::provider::ProviderStatus;
 use crate::thinker::TokenUsage;
+
+/// Auth status for a single provider in the banner.
+pub struct BannerProvider<'a> {
+    pub display_name: &'a str,
+    pub auth_status: &'a str,
+    pub is_active: bool,
+}
 
 /// Session configuration for display in the startup banner.
 pub struct BannerInfo<'a> {
     pub provider: &'a str,
     pub model: &'a str,
-    pub auth_status: &'a str,
+    pub providers: &'a [ProviderStatus],
     pub shell_mode: &'a str,
     pub working_dir: &'a Path,
     pub memory: &'a str,
@@ -17,6 +25,31 @@ pub struct BannerInfo<'a> {
 
 /// Print the startup banner with session info.
 pub fn print_banner(info: &BannerInfo) {
+    let mut auth_lines = String::new();
+    for status in info.providers {
+        let marker = if status.id == info.provider {
+            " ← active"
+        } else {
+            ""
+        };
+        auth_lines.push_str(&format!(
+            "   {}  {} ({}){}\n",
+            if auth_lines.is_empty() {
+                "auth     "
+            } else {
+                "         "
+            },
+            status.display_name,
+            status.auth_status,
+            marker,
+        ));
+    }
+
+    // Fallback if no providers
+    if auth_lines.is_empty() {
+        auth_lines = "   auth      N/A\n".to_string();
+    }
+
     println!(
         r#"
    ╔═══════════════════════════════════════╗
@@ -29,8 +62,7 @@ pub fn print_banner(info: &BannerInfo) {
    home      {}
    repo      {}
    provider  {} ({})
-   auth      {}
-   shell     {}
+{}   shell     {}
    workdir   {}
    memory    {}
 "#,
@@ -40,7 +72,7 @@ pub fn print_banner(info: &BannerInfo) {
         REPO,
         info.provider,
         info.model,
-        info.auth_status,
+        auth_lines,
         info.shell_mode,
         info.working_dir.display(),
         info.memory,
@@ -67,15 +99,58 @@ mod tests {
 
     #[test]
     fn print_banner_does_not_panic() {
+        let statuses = vec![ProviderStatus {
+            id: "anthropic",
+            display_name: "Anthropic (Claude Pro/Max)",
+            auth_status: "OAuth ✓".to_string(),
+        }];
         let info = BannerInfo {
-            provider: "human",
-            model: "—",
-            auth_status: "N/A",
+            provider: "anthropic",
+            model: "claude-sonnet-4-20250514",
+            providers: &statuses,
             shell_mode: "read-only",
             working_dir: &PathBuf::from("/tmp/test"),
             memory: "ephemeral",
         };
         // Just verify it doesn't panic
+        print_banner(&info);
+    }
+
+    #[test]
+    fn print_banner_multiple_providers() {
+        let statuses = vec![
+            ProviderStatus {
+                id: "anthropic",
+                display_name: "Anthropic (Claude Pro/Max)",
+                auth_status: "OAuth ✓".to_string(),
+            },
+            ProviderStatus {
+                id: "google",
+                display_name: "Google (Gemini)",
+                auth_status: "not authenticated".to_string(),
+            },
+        ];
+        let info = BannerInfo {
+            provider: "anthropic",
+            model: "claude-sonnet-4-20250514",
+            providers: &statuses,
+            shell_mode: "read-only",
+            working_dir: &PathBuf::from("/tmp/test"),
+            memory: "ephemeral",
+        };
+        print_banner(&info);
+    }
+
+    #[test]
+    fn print_banner_no_providers() {
+        let info = BannerInfo {
+            provider: "human",
+            model: "—",
+            providers: &[],
+            shell_mode: "read-only",
+            working_dir: &PathBuf::from("/tmp/test"),
+            memory: "ephemeral",
+        };
         print_banner(&info);
     }
 
