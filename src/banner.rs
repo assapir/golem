@@ -25,6 +25,8 @@ pub struct BannerInfo<'a> {
 
 /// Print the startup banner with session info.
 pub fn print_banner(info: &BannerInfo) {
+    // Build auth lines aligned with other banner fields.
+    // Field label column is 10 chars ("provider  ", "shell     ", etc.).
     let mut auth_lines = String::new();
     for status in info.providers {
         let marker = if status.id == info.provider {
@@ -32,16 +34,14 @@ pub fn print_banner(info: &BannerInfo) {
         } else {
             ""
         };
+        let label = if auth_lines.is_empty() {
+            "auth      "
+        } else {
+            "          "
+        };
         auth_lines.push_str(&format!(
-            "   {}  {} ({}){}\n",
-            if auth_lines.is_empty() {
-                "auth     "
-            } else {
-                "         "
-            },
-            status.display_name,
-            status.auth_status,
-            marker,
+            "   {label}{} ({}){}\n",
+            status.display_name, status.auth_status, marker,
         ));
     }
 
