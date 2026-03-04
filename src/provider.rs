@@ -282,6 +282,30 @@ fn resolve_model(cli_model: Option<String>, db_path: &str) -> Option<String> {
     })
 }
 
+/// Build the thinker, auth status, and model for a provider identified by string id.
+/// Uses the provider's default model (no CLI override or config DB lookup).
+/// Used when switching providers at runtime (e.g. after `/login` to a different provider).
+pub fn build_provider_by_id(
+    provider_id: &str,
+    db_path: &str,
+    debug: DebugMode,
+) -> Result<ProviderSetup> {
+    let config = provider_config_by_id(provider_id)
+        .ok_or_else(|| anyhow::anyhow!("unknown provider: {provider_id}"))?;
+
+    let auth = AuthStorage::open(db_path)?;
+    let auth_status = check_auth_status(&auth, config.as_ref());
+    let thinker = config.build_thinker(None, auth, debug);
+    let display = thinker.model().to_string();
+
+    Ok(ProviderSetup {
+        thinker,
+        name: config.id(),
+        model: display,
+        auth_status,
+    })
+}
+
 /// Build the thinker, auth status, and model for the selected provider.
 pub fn build_provider(
     provider: &Provider,

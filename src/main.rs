@@ -15,7 +15,9 @@ use golem::debug::DebugMode;
 use golem::engine::Engine;
 use golem::engine::react::{ReactConfig, ReactEngine};
 use golem::memory::sqlite::SqliteMemory;
-use golem::provider::{LoginProvider, Provider, build_provider, handle_login, handle_logout};
+use golem::provider::{
+    LoginProvider, Provider, build_provider, build_provider_by_id, handle_login, handle_logout,
+};
 use golem::tools::ToolRegistry;
 use golem::tools::exit::ExitTool;
 use golem::tools::shell::{ShellConfig, ShellMode, ShellTool};
@@ -111,7 +113,7 @@ async fn main() -> anyhow::Result<()> {
     // Wire up debug mode and provider
     let debug = DebugMode::new(cli.debug);
     let setup = build_provider(&cli.provider, &db_path, cli.model.clone(), debug.clone())?;
-    let provider_name = setup.name;
+    let mut provider_name = setup.name;
     let mut model_name = setup.model;
     let mut auth_status = setup.auth_status;
 
@@ -260,6 +262,19 @@ async fn main() -> anyhow::Result<()> {
                             eprintln!("  warning: failed to persist model preference: {e}");
                         }
                         model_name = new_model;
+                    }
+                    StateChange::Provider(new_id) => {
+                        match build_provider_by_id(&new_id, &db_path, debug.clone()) {
+                            Ok(new_setup) => {
+                                engine.set_thinker(new_setup.thinker).await;
+                                provider_name = new_setup.name;
+                                model_name = new_setup.model;
+                                auth_status = new_setup.auth_status;
+                            }
+                            Err(e) => {
+                                eprintln!("  ✗ failed to switch provider: {e}");
+                            }
+                        }
                     }
                 }
                 continue;

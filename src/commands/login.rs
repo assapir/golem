@@ -63,11 +63,12 @@ impl Command for LoginCommand {
         match config.login(info.db_path).await {
             Ok(()) => {
                 println!("  ✓ logged in to {}", config.display_name());
-                // Only update REPL auth status if logging into the current provider
                 if config.id() == info.provider {
+                    // Same provider — just update auth status
                     CommandResult::StateChanged(StateChange::Auth("OAuth ✓".to_string()))
                 } else {
-                    CommandResult::Handled
+                    // Different provider — switch to it
+                    CommandResult::StateChanged(StateChange::Provider(config.id().to_string()))
                 }
             }
             Err(e) => {
