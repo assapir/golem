@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use golem::tools::exit::ExitTool;
 use golem::tools::shell::{ShellConfig, ShellMode, ShellTool};
-use golem::tools::{Outcome, ToolRegistry};
+use golem::tools::{Outcome, Tool, ToolRegistry};
 
 /// Helper: build a shell tool with no confirmation, read-write mode, cwd as work dir.
 fn test_shell() -> ShellTool {
@@ -200,4 +201,42 @@ async fn registry_unregister_removes_tool() {
     registry.unregister("shell").await;
 
     assert_eq!(registry.descriptions().await.len(), 0);
+}
+
+// --- ExitTool integration tests ---
+
+#[tokio::test]
+async fn exit_tool_executes_via_registry() {
+    let registry = ToolRegistry::new();
+    let exit_tool = Arc::new(ExitTool::new());
+    registry
+        .register(Arc::clone(&exit_tool) as Arc<dyn Tool>)
+        .await;
+
+    let result = registry.execute("exit", &HashMap::new()).await;
+    assert!(matches!(result.outcome, Outcome::Success(ref s) if s.contains("Goodbye")));
+    assert!(exit_tool.triggered());
+}
+
+#[tokio::test]
+async fn exit_tool_coexists_with_shell() {
+    let registry = ToolRegistry::new();
+    registry.register(Arc::new(test_shell())).await;
+    let exit_tool = Arc::new(ExitTool::new());
+    registry
+        .register(Arc::clone(&exit_tool) as Arc<dyn Tool>)
+        .await;
+
+    assert_eq!(registry.descriptions().await.len(), 2);
+
+    // Shell still works
+    let args = HashMap::from([("command".to_string(), "echo hi".to_string())]);
+    let result = registry.execute("shell", &args).await;
+    assert!(matches!(result.outcome, Outcome::Success(_)));
+    assert!(!exit_tool.triggered());
+
+    // Exit works
+    let result = registry.execute("exit", &HashMap::new()).await;
+    assert!(matches!(result.outcome, Outcome::Success(_)));
+    assert!(exit_tool.triggered());
 }

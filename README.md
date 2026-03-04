@@ -147,7 +147,7 @@ Everything is a trait. Everything is swappable.
 - **`ProviderConfig`** — defines a provider's identity, auth flow, and thinker construction
 - **`Engine`** — the outermost boundary (`fn run(task) -> answer`)
 - **`Thinker`** — the brain (Anthropic, Gemini, human, mock — picked via `--provider`)
-- **`Tool`** — something the agent can do (shell commands, more coming)
+- **`Tool`** — something the agent can do (shell commands, exit, more coming)
 - **`Command`** — built-in REPL commands (`/help`, `/model`, `/new`, etc.)
 - **`Memory`** — what the agent remembers (task iterations + session history, SQLite-backed)
 - **`Config`** — persistent key-value settings (model preference, etc.)

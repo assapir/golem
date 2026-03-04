@@ -1,3 +1,4 @@
+pub mod exit;
 pub mod shell;
 
 use anyhow::Result;

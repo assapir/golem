@@ -68,7 +68,7 @@ src/
 │   ├── gemini.rs        # Google Gemini generateContent API
 │   ├── human.rs         # Human-in-the-loop thinker
 │   └── mock.rs          # MockThinker for tests
-├── tools/               # Tool trait + ToolRegistry + ShellTool
+├── tools/               # Tool trait + ToolRegistry + ShellTool + ExitTool
 ├── memory/              # Memory trait + SqliteMemory (task + session memory)
 └── spinner.rs           # Thinking spinner during LLM calls
 ```
