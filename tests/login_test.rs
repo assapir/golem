@@ -3,7 +3,9 @@ use golem::auth::storage::{AuthStorage, Credential};
 use golem::commands::{CommandRegistry, CommandResult, SessionInfo};
 use golem::config::Config;
 use golem::debug::DebugMode;
-use golem::provider::{Provider, all_login_providers, build_provider, provider_config_by_id};
+use golem::provider::{
+    Provider, all_login_providers, build_provider, build_provider_by_id, provider_config_by_id,
+};
 use golem::thinker::TokenUsage;
 
 fn test_info(provider: &str) -> SessionInfo<'_> {
@@ -340,4 +342,91 @@ fn logout_one_provider_preserves_others() {
             p.id()
         );
     }
+}
+
+// ── build_provider_by_id ──────────────────────────────────────────
+
+#[test]
+fn build_provider_by_id_returns_anthropic() {
+    let setup = build_provider_by_id("anthropic", ":memory:", None, DebugMode::default()).unwrap();
+    assert_eq!(setup.name, "anthropic");
+    assert!(!setup.model.is_empty());
+}
+
+#[test]
+fn build_provider_by_id_returns_google() {
+    let setup = build_provider_by_id("google", ":memory:", None, DebugMode::default()).unwrap();
+    assert_eq!(setup.name, "google");
+    assert!(!setup.model.is_empty());
+}
+
+#[test]
+fn build_provider_by_id_unknown_returns_error() {
+    let result = build_provider_by_id("unknown", ":memory:", None, DebugMode::default());
+    assert!(result.is_err());
+    let err = result.err().unwrap();
+    assert!(err.to_string().contains("unknown"));
+}
+
+#[test]
+fn build_provider_by_id_human_returns_error() {
+    // "human" has no ProviderConfig, so it should fail
+    let result = build_provider_by_id("human", ":memory:", None, DebugMode::default());
+    assert!(result.is_err());
+}
+
+#[test]
+fn build_provider_by_id_uses_default_model_not_config_db() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("by-id-model.db");
+    let db_str = db_path.to_str().unwrap();
+
+    // Store a model in config DB
+    let config = Config::open(db_str).unwrap();
+    config.set("model", "persisted-model").unwrap();
+    drop(config);
+
+    // build_provider_by_id should ignore the config DB and use the provider's default
+    let setup = build_provider_by_id("anthropic", db_str, None, DebugMode::default()).unwrap();
+    assert_ne!(
+        setup.model, "persisted-model",
+        "build_provider_by_id should use provider default, not config DB"
+    );
+}
+
+#[test]
+fn build_provider_by_id_detects_auth_status() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("by-id-auth.db");
+    let db_str = db_path.to_str().unwrap();
+
+    let storage = AuthStorage::open(db_str).unwrap();
+    storage
+        .set(
+            "google",
+            Credential::OAuth(OAuthCredentials {
+                access: "token".to_string(),
+                refresh: "refresh".to_string(),
+                expires: u64::MAX,
+                client_hint: None,
+            }),
+        )
+        .unwrap();
+    drop(storage);
+
+    let setup = build_provider_by_id("google", db_str, None, DebugMode::default()).unwrap();
+    assert_eq!(setup.auth_status, "OAuth ✓");
+}
+
+#[test]
+fn build_provider_by_id_with_model_override() {
+    let setup = build_provider_by_id(
+        "anthropic",
+        ":memory:",
+        Some("custom-model".to_string()),
+        DebugMode::default(),
+    )
+    .unwrap();
+    assert_eq!(setup.model, "custom-model");
+    assert_eq!(setup.name, "anthropic");
 }

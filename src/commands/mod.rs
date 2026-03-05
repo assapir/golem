@@ -45,6 +45,10 @@ pub enum StateChange {
     Auth(String),
     /// Active model changed (new model ID).
     Model(String),
+    /// Active provider changed (provider ID, optional model override).
+    /// The REPL should rebuild the thinker for this provider.
+    /// Pass `None` as the model to use the provider's default.
+    Provider(String, Option<String>),
 }
 
 /// What the REPL should do after a command runs.
@@ -325,6 +329,35 @@ mod tests {
                 assert_eq!(model, "new-model");
             }
             other => panic!("expected StateChanged(Model), got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn state_changed_provider_variant_carries_value() {
+        struct FakeProviderCommand;
+
+        #[async_trait]
+        impl Command for FakeProviderCommand {
+            fn name(&self) -> &str {
+                "/fakeprovider"
+            }
+            fn description(&self) -> &str {
+                "test"
+            }
+            async fn execute(&self, _info: &SessionInfo<'_>) -> CommandResult {
+                CommandResult::StateChanged(StateChange::Provider("google".to_string(), None))
+            }
+        }
+
+        let mut reg = CommandRegistry::new();
+        reg.register(Arc::new(FakeProviderCommand));
+
+        match reg.dispatch("/fakeprovider", &test_info()).await {
+            CommandResult::StateChanged(StateChange::Provider(id, model)) => {
+                assert_eq!(id, "google");
+                assert!(model.is_none());
+            }
+            other => panic!("expected StateChanged(Provider), got: {other:?}"),
         }
     }
 

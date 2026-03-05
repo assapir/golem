@@ -255,6 +255,54 @@ pub struct ProviderSetup {
     pub auth_status: String,
 }
 
+/// Auth status for a single provider, used in the startup banner.
+pub struct ProviderStatus {
+    pub id: &'static str,
+    pub display_name: &'static str,
+    pub auth_status: String,
+}
+
+/// Get auth status for all configurable providers.
+pub fn all_provider_statuses(db_path: &str) -> Vec<ProviderStatus> {
+    let auth = match AuthStorage::open(db_path) {
+        Ok(a) => a,
+        Err(_) => return Vec::new(),
+    };
+    all_login_providers()
+        .into_iter()
+        .map(|config| {
+            let status = check_auth_status(&auth, config.as_ref());
+            ProviderStatus {
+                id: config.id(),
+                display_name: config.display_name(),
+                auth_status: status,
+            }
+        })
+        .collect()
+}
+
+/// Get the auth status string for a single provider (e.g. `"OAuth ✓"`, `"not authenticated"`).
+pub fn provider_auth_status(db_path: &str, provider_id: &str) -> String {
+    let Some(config) = provider_config_by_id(provider_id) else {
+        return "not authenticated".to_string();
+    };
+    let Ok(auth) = AuthStorage::open(db_path) else {
+        return "not authenticated".to_string();
+    };
+    check_auth_status(&auth, config.as_ref())
+}
+
+/// Returns true if the provider has stored credentials or an env var set.
+pub fn is_authenticated(db_path: &str, provider_id: &str) -> bool {
+    let Some(config) = provider_config_by_id(provider_id) else {
+        return false;
+    };
+    let Ok(auth) = AuthStorage::open(db_path) else {
+        return false;
+    };
+    check_auth_status(&auth, config.as_ref()) != "not authenticated"
+}
+
 /// Check auth status for a provider: stored credential → env var → not authenticated.
 fn check_auth_status(auth: &AuthStorage, config: &dyn ProviderConfig) -> String {
     match auth.get(config.id()) {
@@ -279,6 +327,31 @@ fn resolve_model(cli_model: Option<String>, db_path: &str) -> Option<String> {
         Config::open(db_path)
             .ok()
             .and_then(|c| c.get("model").ok().flatten())
+    })
+}
+
+/// Build the thinker, auth status, and model for a provider identified by string id.
+/// Pass `model: None` to use the provider's default model.
+/// Used when switching providers at runtime (e.g. after `/login` or `/model`).
+pub fn build_provider_by_id(
+    provider_id: &str,
+    db_path: &str,
+    model: Option<String>,
+    debug: DebugMode,
+) -> Result<ProviderSetup> {
+    let config = provider_config_by_id(provider_id)
+        .ok_or_else(|| anyhow::anyhow!("unknown provider: {provider_id}"))?;
+
+    let auth = AuthStorage::open(db_path)?;
+    let auth_status = check_auth_status(&auth, config.as_ref());
+    let thinker = config.build_thinker(model, auth, debug);
+    let display = thinker.model().to_string();
+
+    Ok(ProviderSetup {
+        thinker,
+        name: config.id(),
+        model: display,
+        auth_status,
     })
 }
 
@@ -441,5 +514,85 @@ mod tests {
     fn provider_config_by_id_returns_none_for_unknown() {
         assert!(provider_config_by_id("unknown").is_none());
         assert!(provider_config_by_id("human").is_none());
+    }
+
+    #[test]
+    fn all_provider_statuses_returns_all_providers() {
+        let statuses = all_provider_statuses(":memory:");
+        let ids: Vec<&str> = statuses.iter().map(|s| s.id).collect();
+        assert!(ids.contains(&"anthropic"));
+        assert!(ids.contains(&"google"));
+    }
+
+    #[test]
+    fn all_provider_statuses_includes_display_names() {
+        for status in all_provider_statuses(":memory:") {
+            assert!(!status.display_name.is_empty());
+            assert!(!status.auth_status.is_empty());
+        }
+    }
+
+    #[test]
+    fn provider_auth_status_not_authenticated() {
+        assert_eq!(
+            provider_auth_status(":memory:", "anthropic"),
+            "not authenticated"
+        );
+    }
+
+    #[test]
+    fn provider_auth_status_with_credentials() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("auth-status.db");
+        let db_str = db_path.to_str().unwrap();
+
+        let storage = AuthStorage::open(db_str).unwrap();
+        storage
+            .set(
+                "anthropic",
+                Credential::ApiKey {
+                    key: "test".to_string(),
+                },
+            )
+            .unwrap();
+        drop(storage);
+
+        assert_eq!(provider_auth_status(db_str, "anthropic"), "API key ✓");
+    }
+
+    #[test]
+    fn provider_auth_status_unknown_provider() {
+        assert_eq!(
+            provider_auth_status(":memory:", "unknown"),
+            "not authenticated"
+        );
+    }
+
+    #[test]
+    fn is_authenticated_false_without_credentials() {
+        assert!(!is_authenticated(":memory:", "anthropic"));
+        assert!(!is_authenticated(":memory:", "google"));
+        assert!(!is_authenticated(":memory:", "unknown"));
+    }
+
+    #[test]
+    fn is_authenticated_true_with_credentials() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("auth-check.db");
+        let db_str = db_path.to_str().unwrap();
+
+        let storage = AuthStorage::open(db_str).unwrap();
+        storage
+            .set(
+                "anthropic",
+                Credential::ApiKey {
+                    key: "test".to_string(),
+                },
+            )
+            .unwrap();
+        drop(storage);
+
+        assert!(is_authenticated(db_str, "anthropic"));
+        assert!(!is_authenticated(db_str, "google"));
     }
 }
