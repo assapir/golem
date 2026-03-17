@@ -1,5 +1,6 @@
 use crate::thinker::ToolDescription;
 use std::fs;
+use std::sync::OnceLock;
 
 const INTRO: &str = "You are Golem, an AI agent that solves tasks using a ReAct loop.\n\nCRITICAL: Your entire response must be a single JSON object. No prose, no explanation, no markdown — just JSON.";
 
@@ -35,6 +36,8 @@ const RULES: &[&str] = &[
     "When you have enough information, respond with the answer format.",
 ];
 
+static AGENTS_MD_CACHE: OnceLock<Option<String>> = OnceLock::new();
+
 pub fn build_react_system_prompt(tools: &[ToolDescription]) -> String {
     build_react_system_prompt_with_session_and_agents(tools, false, load_agents_md())
 }
@@ -49,7 +52,7 @@ pub fn build_react_system_prompt_with_session(
 fn build_react_system_prompt_with_session_and_agents(
     tools: &[ToolDescription],
     has_session_history: bool,
-    agents_md: Option<String>,
+    agents_md: Option<&str>,
 ) -> String {
     let mut prompt = String::with_capacity(1024);
 
@@ -63,8 +66,9 @@ fn build_react_system_prompt_with_session_and_agents(
     }
 
     if let Some(agents_md) = agents_md {
-        prompt.push_str("\nRepository instructions (AGENTS.md):\n");
-        prompt.push_str(&sanitize_agents_md(&agents_md));
+        prompt.push('\n');
+        prompt.push_str("Repository instructions (AGENTS.md):\n");
+        prompt.push_str(&sanitize_agents_md(agents_md));
         prompt.push('\n');
     }
 
@@ -96,16 +100,21 @@ fn build_react_system_prompt_with_session_and_agents(
     prompt
 }
 
-fn load_agents_md() -> Option<String> {
-    for path in ["AGENTS.md", "agents.md"] {
-        if let Ok(content) = fs::read_to_string(path) {
-            let trimmed = content.trim();
-            if !trimmed.is_empty() {
-                return Some(trimmed.to_string());
+fn load_agents_md() -> Option<&'static str> {
+    AGENTS_MD_CACHE
+        .get_or_init(|| {
+            // Prefer AGENTS.md when both are present, then fall back to agents.md.
+            for path in ["AGENTS.md", "agents.md"] {
+                if let Ok(content) = fs::read_to_string(path) {
+                    let trimmed = content.trim();
+                    if !trimmed.is_empty() {
+                        return Some(trimmed.to_string());
+                    }
+                }
             }
-        }
-    }
-    None
+            None
+        })
+        .as_deref()
 }
 
 fn sanitize_agents_md(content: &str) -> String {
@@ -224,7 +233,7 @@ mod tests {
         let prompt = build_react_system_prompt_with_session_and_agents(
             &[],
             false,
-            Some("# AGENTS\n```bash\nfollow repo instructions\n```".to_string()),
+            Some("# AGENTS\n```bash\nfollow repo instructions\n```"),
         );
         assert!(prompt.contains("Repository instructions (AGENTS.md):"));
         assert!(prompt.contains("# AGENTS\n'''bash\nfollow repo instructions\n'''"));
