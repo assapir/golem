@@ -1,4 +1,5 @@
 use crate::thinker::ToolDescription;
+use std::fs;
 
 const INTRO: &str = "You are Golem, an AI agent that solves tasks using a ReAct loop.\n\nCRITICAL: Your entire response must be a single JSON object. No prose, no explanation, no markdown — just JSON.";
 
@@ -35,12 +36,20 @@ const RULES: &[&str] = &[
 ];
 
 pub fn build_react_system_prompt(tools: &[ToolDescription]) -> String {
-    build_react_system_prompt_with_session(tools, false)
+    build_react_system_prompt_with_session_and_agents(tools, false, load_agents_md())
 }
 
 pub fn build_react_system_prompt_with_session(
     tools: &[ToolDescription],
     has_session_history: bool,
+) -> String {
+    build_react_system_prompt_with_session_and_agents(tools, has_session_history, load_agents_md())
+}
+
+fn build_react_system_prompt_with_session_and_agents(
+    tools: &[ToolDescription],
+    has_session_history: bool,
+    agents_md: Option<String>,
 ) -> String {
     let mut prompt = String::with_capacity(1024);
 
@@ -50,6 +59,12 @@ pub fn build_react_system_prompt_with_session(
     if has_session_history {
         prompt.push('\n');
         prompt.push_str(SESSION_CONTEXT);
+        prompt.push('\n');
+    }
+
+    if let Some(agents_md) = agents_md {
+        prompt.push_str("\nRepository instructions (AGENTS.md):\n");
+        prompt.push_str(&sanitize_agents_md(&agents_md));
         prompt.push('\n');
     }
 
@@ -79,6 +94,22 @@ pub fn build_react_system_prompt_with_session(
     }
 
     prompt
+}
+
+fn load_agents_md() -> Option<String> {
+    for path in ["AGENTS.md", "agents.md"] {
+        if let Ok(content) = fs::read_to_string(path) {
+            let trimmed = content.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn sanitize_agents_md(content: &str) -> String {
+    content.replace("```", "'''")
 }
 
 #[cfg(test)]
@@ -186,5 +217,22 @@ mod tests {
     fn default_prompt_has_no_session_context() {
         let prompt = build_react_system_prompt(&[]);
         assert!(!prompt.contains("prior tasks"));
+    }
+
+    #[test]
+    fn includes_agents_md_when_present() {
+        let prompt = build_react_system_prompt_with_session_and_agents(
+            &[],
+            false,
+            Some("# AGENTS\n```bash\nfollow repo instructions\n```".to_string()),
+        );
+        assert!(prompt.contains("Repository instructions (AGENTS.md):"));
+        assert!(prompt.contains("# AGENTS\n'''bash\nfollow repo instructions\n'''"));
+    }
+
+    #[test]
+    fn omits_agents_md_section_when_missing() {
+        let prompt = build_react_system_prompt_with_session_and_agents(&[], false, None);
+        assert!(!prompt.contains("Repository instructions (AGENTS.md):"));
     }
 }
