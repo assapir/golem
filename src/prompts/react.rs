@@ -107,9 +107,11 @@ fn build_react_system_prompt_with_session_and_agents(
 fn load_agent_instructions() -> Option<&'static str> {
     AGENT_INSTRUCTIONS_CACHE
         .get_or_init(|| {
-            // Ordered by precedence. Keep AGENTS first, then common single-file
-            // alternatives used by other agents.
+            // Ordered by precedence. Keep AGENTS/agents first, then common
+            // single-file alternatives used by other agents.
             for path in instruction_file_candidates() {
+                // Missing/unreadable files are expected in many repos; ignore and
+                // continue scanning fallback candidates.
                 if let Ok(content) = fs::read_to_string(path) {
                     let trimmed = content.trim();
                     if !trimmed.is_empty() {
@@ -123,6 +125,8 @@ fn load_agent_instructions() -> Option<&'static str> {
 }
 
 fn instruction_file_candidates() -> &'static [&'static str] {
+    // Explicit filename variants keep behavior predictable across platforms and
+    // avoid case-insensitive filesystem assumptions.
     &[
         "AGENTS.md",
         "agents.md",
@@ -135,6 +139,8 @@ fn instruction_file_candidates() -> &'static [&'static str] {
 }
 
 fn sanitize_agents_md(content: &str) -> String {
+    // Keep sanitization minimal: strip markdown code fences so we preserve the
+    // prompt's no-fences constraint while leaving other text unchanged.
     content.replace("```", "'''")
 }
 
