@@ -36,17 +36,21 @@ const RULES: &[&str] = &[
     "When you have enough information, respond with the answer format.",
 ];
 
-static AGENTS_MD_CACHE: OnceLock<Option<String>> = OnceLock::new();
+static AGENT_INSTRUCTIONS_CACHE: OnceLock<Option<String>> = OnceLock::new();
 
 pub fn build_react_system_prompt(tools: &[ToolDescription]) -> String {
-    build_react_system_prompt_with_session_and_agents(tools, false, load_agents_md())
+    build_react_system_prompt_with_session_and_agents(tools, false, load_agent_instructions())
 }
 
 pub fn build_react_system_prompt_with_session(
     tools: &[ToolDescription],
     has_session_history: bool,
 ) -> String {
-    build_react_system_prompt_with_session_and_agents(tools, has_session_history, load_agents_md())
+    build_react_system_prompt_with_session_and_agents(
+        tools,
+        has_session_history,
+        load_agent_instructions(),
+    )
 }
 
 fn build_react_system_prompt_with_session_and_agents(
@@ -67,7 +71,7 @@ fn build_react_system_prompt_with_session_and_agents(
 
     if let Some(agents_md) = agents_md {
         prompt.push('\n');
-        prompt.push_str("Repository instructions (AGENTS.md):\n");
+        prompt.push_str("Repository agent instructions:\n");
         prompt.push_str(&sanitize_agents_md(agents_md));
         prompt.push('\n');
     }
@@ -100,11 +104,12 @@ fn build_react_system_prompt_with_session_and_agents(
     prompt
 }
 
-fn load_agents_md() -> Option<&'static str> {
-    AGENTS_MD_CACHE
+fn load_agent_instructions() -> Option<&'static str> {
+    AGENT_INSTRUCTIONS_CACHE
         .get_or_init(|| {
-            // Prefer AGENTS.md when both are present, then fall back to agents.md.
-            for path in ["AGENTS.md", "agents.md"] {
+            // Ordered by precedence. Keep AGENTS first, then common single-file
+            // alternatives used by other agents.
+            for path in instruction_file_candidates() {
                 if let Ok(content) = fs::read_to_string(path) {
                     let trimmed = content.trim();
                     if !trimmed.is_empty() {
@@ -115,6 +120,18 @@ fn load_agents_md() -> Option<&'static str> {
             None
         })
         .as_deref()
+}
+
+fn instruction_file_candidates() -> &'static [&'static str] {
+    &[
+        "AGENTS.md",
+        "agents.md",
+        "CLAUDE.md",
+        "claude.md",
+        "GEMINI.md",
+        "gemini.md",
+        ".github/copilot-instructions.md",
+    ]
 }
 
 fn sanitize_agents_md(content: &str) -> String {
@@ -235,13 +252,21 @@ mod tests {
             false,
             Some("# AGENTS\n```bash\nfollow repo instructions\n```"),
         );
-        assert!(prompt.contains("Repository instructions (AGENTS.md):"));
+        assert!(prompt.contains("Repository agent instructions:"));
         assert!(prompt.contains("# AGENTS\n'''bash\nfollow repo instructions\n'''"));
     }
 
     #[test]
     fn omits_agents_md_section_when_missing() {
         let prompt = build_react_system_prompt_with_session_and_agents(&[], false, None);
-        assert!(!prompt.contains("Repository instructions (AGENTS.md):"));
+        assert!(!prompt.contains("Repository agent instructions:"));
+    }
+
+    #[test]
+    fn instruction_candidates_include_other_agent_files() {
+        let files = instruction_file_candidates();
+        assert!(files.contains(&"CLAUDE.md"));
+        assert!(files.contains(&"GEMINI.md"));
+        assert!(files.contains(&".github/copilot-instructions.md"));
     }
 }
