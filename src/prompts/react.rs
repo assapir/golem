@@ -37,6 +37,17 @@ const RULES: &[&str] = &[
 ];
 
 static AGENT_INSTRUCTIONS_CACHE: OnceLock<Option<String>> = OnceLock::new();
+// Explicit filename variants keep behavior predictable across platforms and
+// avoid case-insensitive filesystem assumptions.
+static INSTRUCTION_FILE_CANDIDATES: &[&str] = &[
+    "AGENTS.md",
+    "agents.md",
+    "CLAUDE.md",
+    "claude.md",
+    "GEMINI.md",
+    "gemini.md",
+    ".github/copilot-instructions.md",
+];
 
 pub fn build_react_system_prompt(tools: &[ToolDescription]) -> String {
     build_react_system_prompt_with_session_and_agents(tools, false, load_agent_instructions())
@@ -109,7 +120,7 @@ fn load_agent_instructions() -> Option<&'static str> {
         .get_or_init(|| {
             // Ordered by precedence. Keep AGENTS/agents first, then common
             // single-file alternatives used by other agents.
-            for path in instruction_file_candidates() {
+            for path in INSTRUCTION_FILE_CANDIDATES {
                 // Missing/unreadable files are expected in many repos; ignore and
                 // continue scanning fallback candidates.
                 if let Ok(content) = fs::read_to_string(path) {
@@ -122,20 +133,6 @@ fn load_agent_instructions() -> Option<&'static str> {
             None
         })
         .as_deref()
-}
-
-fn instruction_file_candidates() -> &'static [&'static str] {
-    // Explicit filename variants keep behavior predictable across platforms and
-    // avoid case-insensitive filesystem assumptions.
-    &[
-        "AGENTS.md",
-        "agents.md",
-        "CLAUDE.md",
-        "claude.md",
-        "GEMINI.md",
-        "gemini.md",
-        ".github/copilot-instructions.md",
-    ]
 }
 
 fn sanitize_agents_md(content: &str) -> String {
@@ -270,7 +267,7 @@ mod tests {
 
     #[test]
     fn instruction_candidates_include_other_agent_files() {
-        let files = instruction_file_candidates();
+        let files = INSTRUCTION_FILE_CANDIDATES;
         assert!(files.contains(&"CLAUDE.md"));
         assert!(files.contains(&"GEMINI.md"));
         assert!(files.contains(&".github/copilot-instructions.md"));
