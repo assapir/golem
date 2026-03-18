@@ -1,16 +1,16 @@
-use std::io::{self, Write};
 use std::sync::Arc;
 use std::time::Duration;
 
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use tokio::io::{AsyncBufReadExt, BufReader};
+use rustyline::error::ReadlineError;
+use rustyline::{Config as ReadlineConfig, DefaultEditor};
 
 use golem::banner::{BannerInfo, print_banner, print_session_summary};
 use golem::commands::{CommandRegistry, CommandResult, SessionInfo, StateChange};
 use golem::config::Config;
-use golem::consts::default_db_path;
+use golem::consts::{default_db_path, default_history_path};
 use golem::debug::DebugMode;
 use golem::engine::Engine;
 use golem::engine::react::{ReactConfig, ReactEngine};
@@ -192,32 +192,32 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    // REPL — async stdin so Ctrl+C is caught at the prompt too
-    let stdin = BufReader::new(tokio::io::stdin());
-    let mut lines = stdin.lines();
+    // REPL with line editing and persistent history.
+    let history_path = default_history_path();
+    if let Some(parent) = history_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut repl: DefaultEditor =
+        DefaultEditor::with_config(ReadlineConfig::builder().auto_add_history(true).build())?;
+    if let Err(e) = repl.load_history(&history_path)
+        && !matches!(e, ReadlineError::Io(ref io_err) if io_err.kind() == std::io::ErrorKind::NotFound)
+    {
+        eprintln!("warning: failed to load history: {e}");
+    }
 
     loop {
-        print!("\ngolem> ");
-        io::stdout().flush()?;
-
-        // Read next line, interruptible by Ctrl+C
-        let line = tokio::select! {
-            result = lines.next_line() => {
-                match result {
-                    Ok(Some(line)) => line,
-                    Ok(None) => {
-                        // Ctrl+D (EOF)
-                        println!();
-                        break;
-                    }
-                    Err(e) => {
-                        eprintln!("input error: {}", e);
-                        break;
-                    }
-                }
+        let line = match repl.readline("\ngolem> ") {
+            Ok(line) => line,
+            Err(ReadlineError::Interrupted) => {
+                println!("\n\ninterrupted");
+                continue;
             }
-            _ = tokio::signal::ctrl_c() => {
+            Err(ReadlineError::Eof) => {
                 println!();
+                break;
+            }
+            Err(e) => {
+                eprintln!("input error: {e}");
                 break;
             }
         };
@@ -306,6 +306,10 @@ async fn main() -> anyhow::Result<()> {
         if exit_tool.triggered() {
             break;
         }
+    }
+
+    if let Err(e) = repl.save_history(&history_path) {
+        eprintln!("warning: failed to save history: {e}");
     }
 
     print_session_summary(engine.session_usage());

@@ -18,6 +18,14 @@ pub fn default_db_path() -> PathBuf {
         .join("golem.db")
 }
 
+/// Default REPL history path: `~/.golem/history.txt`.
+pub fn default_history_path() -> PathBuf {
+    dirs::home_dir()
+        .expect("cannot determine home directory")
+        .join(".golem")
+        .join("history.txt")
+}
+
 /// Format a number with comma separators (e.g. 1,234,567).
 pub fn format_number(n: u64) -> String {
     let s = n.to_string();
@@ -77,5 +85,15 @@ mod tests {
     #[test]
     fn format_number_single_digit() {
         assert_eq!(format_number(1), "1");
+    }
+
+    #[test]
+    fn default_history_path_is_in_golem_dir() {
+        let path = default_history_path();
+        assert_eq!(
+            path.file_name().and_then(|n| n.to_str()),
+            Some("history.txt")
+        );
+        assert_eq!(path.parent(), default_db_path().parent());
     }
 }

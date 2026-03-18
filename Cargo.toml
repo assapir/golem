@@ -17,6 +17,7 @@ open = "5.3.3"
 rand = "0.10.0"
 reqwest = { version = "0.13.2", features = ["json", "stream", "form", "query"] }
 rusqlite = { version = "0.38.0", features = ["bundled"] }
+rustyline = "17.0.2"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 sha2 = "0.10.9"

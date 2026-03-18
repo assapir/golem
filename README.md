@@ -125,6 +125,7 @@ Type `/help` at the prompt to see all available commands:
 | `/quit` | `quit`, `exit`, `/exit` | Exit the REPL |
 
 Commands are trait-based (`Command` trait + `CommandRegistry`) — plugins can register additional commands at runtime.
+The REPL prompt supports readline-style editing and up/down history navigation; command history is saved to `~/.golem/history.txt`.
 
 ## Session memory
 
